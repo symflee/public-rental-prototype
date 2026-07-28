@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Vercel
+.vercel/
+
+# Test output
+coverage/
+.eslintcache
+playwright/.auth/
+playwright-report/
+test-results/
+
+# Local environment files
+.env*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.pem
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Local Codex workspace
+.codex/

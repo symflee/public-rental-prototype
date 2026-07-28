@@ -1,0 +1,14 @@
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+
+# This is dev-only through minimatch 3; forcing brace-expansion 5 breaks ESLint.
+# Remove the exception after the lint dependency chain adopts the patched major.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
+
+# Remove these after Next.js pins patched releases.
+overrides:
+  postcss@<=8.5.17: ^8.5.18
+  sharp@<0.35.0: ^0.35.0
