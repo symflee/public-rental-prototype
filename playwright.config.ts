@@ -6,11 +6,11 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
+    trace: "off",
   },
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
   },
 });

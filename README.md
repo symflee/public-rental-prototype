@@ -1,7 +1,8 @@
 # 공공임대 지도 프로토타입
 
 공공임대 주택 위치 탐색 서비스를 위한 Next.js 프로젝트입니다.
-현재 단계에는 프로젝트 스캐폴드만 포함하며 지도, 데이터, 알림 기능은 구현하지 않습니다.
+현재 단계에는 성남시청 인근을 중심으로 한 전체 화면 카카오맵 연결까지 포함합니다.
+마커, 클러스터, 검색, 상세 패널, 데이터베이스, 알림 기능은 아직 구현하지 않습니다.
 
 ## 요구 환경
 
@@ -16,7 +17,14 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-환경변수가 비어 있어도 준비 화면은 `http://localhost:3000`에서 정상적으로 열립니다.
+카카오 Developers에서 다음 설정을 마친 뒤 `.env.local`에 JavaScript 키를 입력합니다.
+
+1. 카카오맵 API 사용 설정을 켭니다.
+2. JavaScript SDK 도메인에 `http://localhost:3000`을 등록합니다.
+3. `NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY`에 JavaScript 키를 입력합니다.
+
+개발 서버를 열면 `http://localhost:3000`에 성남시청 중심의 기본 지도가 표시됩니다.
+키가 없거나 SDK를 불러오지 못하면 화면에 원인을 확인할 수 있는 안내가 표시됩니다.
 `NEXT_PUBLIC_*` 값은 브라우저에 공개되므로 비밀키나 Supabase 서비스 역할 키를 넣지 않습니다.
 
 ## 명령어
@@ -39,6 +47,9 @@ Playwright를 처음 실행하는 환경에서는 브라우저를 한 번 설치
 pnpm exec playwright install chromium
 ```
 
+`pnpm test:e2e`는 실제 카카오 지도 타일이 준비되는지 확인하므로 위의 로컬 키와
+카카오 Developers 설정이 필요합니다.
+
 ## 의존성 보안
 
 `pnpm-workspace.yaml`은 Next.js가 아직 고정하고 있는 PostCSS와 Sharp를 보안 패치
@@ -49,10 +60,8 @@ pnpm exec playwright install chromium
 ## 저장소 구조
 
 - `src/app`: Next.js 라우트와 의존성 조립
-- `src/components/ui`: 공용 표현 컴포넌트
-- `src/features`: 지도, 주택, 공고, 알림 데모 기능
-- `src/domain`: 프레임워크 독립적인 도메인 규칙
-- `src/infrastructure`: Kakao와 Supabase 같은 외부 시스템 어댑터
+- `src/features/map`: 카카오맵 화면과 로딩·오류 상태
+- `src/infrastructure/kakao`: 카카오 SDK 로더와 지도 어댑터
 - `tests/setup`: 테스트 공용 설정
 - `tests/e2e`: 주요 브라우저 사용자 흐름
 
@@ -66,12 +75,12 @@ pnpm exec playwright install chromium
 - `.codex/`는 개인 작업 맥락과 기록을 보관하며 Git에서 제외합니다.
 - `.next/`, 테스트 결과, IDE 설정, 로컬 pnpm 저장소는 생성물이므로 Git에서 제외합니다.
 
-## 다음 단계: 카카오 지도 확인
+## 카카오 지도 연결 범위
 
-1. Kakao Developers의 JavaScript SDK 도메인에 `http://localhost:3000`을 등록합니다.
-2. `.env.local`의 `NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY`에 JavaScript 키를 넣습니다.
-3. `src/infrastructure/kakao`에 SDK 로더를 구현합니다.
-4. `src/features/map`에 전체 화면 지도 컴포넌트를 구현합니다.
-5. 성남시청 인근 중심 좌표로 기본 지도가 표시되는지만 확인합니다.
+- 카카오 SDK는 `autoload=false`로 한 번만 로드합니다.
+- 지도는 성남시청 좌표 `37.420035, 127.127243`, 확대 수준 `5`로 시작합니다.
+- 공식 `tilesloaded` 이벤트 이후에만 준비 완료로 표시합니다.
+- 기본 드래그와 휠 확대·축소를 사용할 수 있습니다.
 
-마커, 클러스터, Supabase, CSV, 알림 기능은 기본 지도 확인 이후에 추가합니다.
+Vercel에 배포할 때는 발급된 배포 도메인과 사용하는 커스텀 도메인을 카카오
+Developers의 JavaScript SDK 도메인에 추가해야 합니다.
