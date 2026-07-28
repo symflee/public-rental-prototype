@@ -1,12 +1,21 @@
-# 공공임대 지도 프로토타입
+# 성남·용인 LH 임대주택 지도
 
-공공임대 주택 위치 탐색 서비스를 위한 Next.js 프로젝트입니다.
-현재 단계에는 성남시청 인근을 중심으로 한 전체 화면 카카오맵 연결까지 포함합니다.
-마커, 클러스터, 검색, 상세 패널, 데이터베이스, 알림 기능은 아직 구현하지 않습니다.
+성남시와 용인시의 LH 임대주택을 정적 스냅샷으로 탐색하는 Next.js
+프로토타입입니다. 앱은 실행 중 외부 주소 API를 호출하지 않으며, 목록과 지도 핀은
+같은 결정적 위치 ID를 사용합니다.
+
+현재 수집 범위는 다음과 같습니다.
+
+- 성남시 소재 LH 임대주택 87곳
+- 용인시 소재 LH 임대주택 182곳
+- 국민임대, 영구임대, 행복주택, 통합공공임대, 공공임대, 매입임대
+
+단대동 행복주택, GH·지방공사, 민간임대, 공공분양, 비주거 임대, 계획사업과
+구체 좌표를 만들 수 없는 주소는 포함하지 않습니다.
 
 ## 요구 환경
 
-- Node.js 24 LTS
+- Node.js 24 또는 26
 - pnpm 11.9.0
 
 ## 시작하기
@@ -17,70 +26,113 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-카카오 Developers에서 다음 설정을 마친 뒤 `.env.local`에 JavaScript 키를 입력합니다.
+카카오 Developers에서 지도 사용 설정을 켜고 JavaScript SDK 도메인에
+`http://localhost:3000`을 등록합니다. `.env.local`에는 브라우저 공개용 JavaScript
+키를 넣습니다.
 
-1. 카카오맵 API 사용 설정을 켭니다.
-2. JavaScript SDK 도메인에 `http://localhost:3000`을 등록합니다.
-3. `NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY`에 JavaScript 키를 입력합니다.
+```dotenv
+NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY=카카오_JavaScript_키
+```
 
-개발 서버를 열면 `http://localhost:3000`에 성남시청 중심의 기본 지도가 표시됩니다.
-키가 없거나 SDK를 불러오지 못하면 화면에 원인을 확인할 수 있는 안내가 표시됩니다.
-`NEXT_PUBLIC_*` 값은 브라우저에 공개되므로 비밀키나 Supabase 서비스 역할 키를 넣지 않습니다.
+`NEXT_PUBLIC_*` 값은 브라우저에 공개됩니다. REST 키나 공공데이터포털 일반인증키를
+이 접두사에 넣지 않습니다.
 
-## 명령어
+## CSV 수집
 
-| 명령어            | 역할                                    |
-| ----------------- | --------------------------------------- |
-| `pnpm dev`        | 개발 서버 실행                          |
-| `pnpm build`      | 프로덕션 빌드                           |
-| `pnpm lint`       | ESLint 검사                             |
-| `pnpm format`     | Prettier 포맷 적용                      |
-| `pnpm typecheck`  | TypeScript 타입 검사                    |
-| `pnpm test`       | Vitest 단위 테스트                      |
-| `pnpm test:watch` | Vitest 감시 모드                        |
-| `pnpm test:e2e`   | Playwright E2E 테스트                   |
-| `pnpm verify`     | lint, 타입, 단위 테스트, 빌드 순차 검증 |
+원천 파일은 공공데이터포털에서 내려받아 `data/`에 둡니다.
 
-Playwright를 처음 실행하는 환경에서는 브라우저를 한 번 설치합니다.
+- [LH 건설임대 CSV](https://www.data.go.kr/data/15050700/fileData.do)
+- [LH 매입임대 CSV](https://www.data.go.kr/data/15050701/fileData.do)
+
+파일명은 NFC/NFD와 관계없이 `_건설_YYYYMMDD.csv`, `_매입_YYYYMMDD.csv`를 각각
+정확히 하나씩 찾습니다. 좌표 캐시에 없는 주소가 있을 때만 서버 전용 Kakao REST
+키가 필요합니다.
+
+```dotenv
+KAKAO_REST_API_KEY=카카오_REST_API_키
+```
+
+```bash
+pnpm collect:public-rentals
+```
+
+수집기는 다음 순서로 동작합니다.
+
+1. UTF-8 strict 디코딩 후 실패하면 CP949/EUC-KR로 CSV를 읽습니다.
+2. 성남시·용인시와 지원 임대유형만 남기고 주소·날짜·숫자를 정규화합니다.
+3. 물리 주소를 기준으로 위치를 묶고 복수 단지코드와 공급행을 하위 레코드로 보존합니다.
+4. 주소 SHA-256 앞 16자리로 `lh:<city>:<hash>` 위치 ID를 만듭니다.
+5. 기존 앱 좌표와 좌표 캐시를 재사용하고, 나머지만 Kakao 주소 검색으로 변환합니다.
+6. 시·구 불일치나 검색 실패가 하나라도 있으면 기존 앱 JSON을 덮어쓰지 않습니다.
+
+생성물은 `src/infrastructure/public-data/generated/`에 저장됩니다.
+
+- `public-rental-locations.json`: 앱이 읽는 schema v2 스냅샷
+- `public-rental-locations.csv`: 위치·주택·공급행 검수 자료
+- `public-rental-coordinate-cache.json`: 서버 수집용 좌표 캐시
+- `collection-report.json`: 원천별 수집·중복·제외·경고·오류 보고서
+
+일부 매입임대 원문은 건물번호 없이 숫자가 포함된 도로명까지만 제공합니다. Kakao가
+반환한 도로 중심 좌표를 사용하되, 해당 위치는 보고서의
+`ROAD_LEVEL_ADDRESS_PRECISION` 및 `roadLevelWarnings`에 별도로 남깁니다.
+
+## API 검수 수집
+
+공공데이터포털 API 수집기는 앱 스냅샷과 분리해 보존합니다. 이 명령은
+`generated/api-review/`만 갱신합니다.
+
+```dotenv
+PUBLIC_DATA_PORTAL_SERVICE_KEY=공공데이터포털_일반인증키
+KAKAO_REST_API_KEY=카카오_REST_API_키
+```
+
+```bash
+pnpm collect:public-rentals:api
+```
+
+## 지도 기능
+
+- 첫 화면과 필터 변경 시 결과 전체를 bounds로 맞춤
+- 6개 임대유형 색상·한글 약자 핀과 복합유형 분할색 핀
+- 2개 이상 위치의 클러스터와 클러스터 bounds 확대
+- 도시 단일 선택, 공급유형 다중 선택, 단지명·주소 검색
+- 지도 이동 후 사용자가 누를 때만 적용하는 `이 지도 영역에서 보기`
+- 목록·핀 선택 동기화와 공급유형별 세대수·면적·공식 출처 상세
+- 데스크톱 384px 패널과 모바일 120px/56dvh 하단 시트
+- 색상 외 한글 약자·범례·텍스트·`aria-live` 안내
+
+## 검증 명령
+
+| 명령어                            | 역할                                   |
+| --------------------------------- | -------------------------------------- |
+| `pnpm dev`                        | 개발 서버 실행                         |
+| `pnpm build`                      | 프로덕션 빌드                          |
+| `pnpm collect:public-rentals`     | CSV 스냅샷·CSV·캐시·보고서 생성        |
+| `pnpm collect:public-rentals:api` | API 검수 산출물을 별도 생성            |
+| `pnpm lint`                       | ESLint 검사                            |
+| `pnpm format:check`               | Prettier 검사                          |
+| `pnpm typecheck`                  | TypeScript strict 타입 검사            |
+| `pnpm test`                       | Vitest 단위·통합 테스트                |
+| `pnpm test:e2e`                   | Playwright 데스크톱·모바일 흐름 검증   |
+| `pnpm verify`                     | lint, 타입, 단위 테스트, 프로덕션 빌드 |
+
+Playwright를 처음 실행하는 환경에서는 Chromium을 설치합니다.
 
 ```bash
 pnpm exec playwright install chromium
 ```
 
-`pnpm test:e2e`는 실제 카카오 지도 타일이 준비되는지 확인하므로 위의 로컬 키와
-카카오 Developers 설정이 필요합니다.
+## 구조
 
-## 의존성 보안
-
-`pnpm-workspace.yaml`은 Next.js가 아직 고정하고 있는 PostCSS와 Sharp를 보안 패치
-버전으로 override합니다. `brace-expansion` advisory는 ESLint의 개발 전용 의존성에만
-해당하며, 패치된 메이저 버전을 강제하면 현재 lint 체인이 깨지므로 명시적으로
-감사 예외 처리했습니다. lint 의존성이 업데이트되면 해당 예외를 제거합니다.
-
-## 저장소 구조
-
-- `src/app`: Next.js 라우트와 의존성 조립
-- `src/features/map`: 카카오맵 화면과 로딩·오류 상태
-- `src/infrastructure/kakao`: 카카오 SDK 로더와 지도 어댑터
-- `tests/setup`: 테스트 공용 설정
+- `src/app`: 라우트와 의존성 조립
+- `src/domain/public-rental`: 공공임대 타입과 배포 규칙
+- `src/features/map`: 필터, 목록, 상세, 지도 사용자 흐름
+- `src/infrastructure/kakao`: Kakao SDK·클러스터·마커 컨트롤러
+- `src/infrastructure/public-data`: CSV 파서·정규화·스냅샷
+- `src/infrastructure/public-rental-csv`: 파일 탐색·좌표·수집 보고서
+- `scripts`: CSV 기본 수집기와 API 검수 수집기
 - `tests/e2e`: 주요 브라우저 사용자 흐름
 
-아직 구현 파일이 없는 디렉터리는 미리 커밋하지 않고 기능을 시작할 때 추가합니다.
-구체적인 의존성 규칙은 [AGENTS.md](./AGENTS.md)를 따릅니다.
-
-## Git 관리
-
-- `.env.example`은 환경변수 이름만 담아 원격 저장소에 공유합니다.
-- `.env.local`은 실제 로컬 값이므로 Git에서 제외합니다.
-- `.codex/`는 개인 작업 맥락과 기록을 보관하며 Git에서 제외합니다.
-- `.next/`, 테스트 결과, IDE 설정, 로컬 pnpm 저장소는 생성물이므로 Git에서 제외합니다.
-
-## 카카오 지도 연결 범위
-
-- 카카오 SDK는 `autoload=false`로 한 번만 로드합니다.
-- 지도는 성남시청 좌표 `37.420035, 127.127243`, 확대 수준 `5`로 시작합니다.
-- 공식 `tilesloaded` 이벤트 이후에만 준비 완료로 표시합니다.
-- 기본 드래그와 휠 확대·축소를 사용할 수 있습니다.
-
-Vercel에 배포할 때는 발급된 배포 도메인과 사용하는 커스텀 도메인을 카카오
-Developers의 JavaScript SDK 도메인에 추가해야 합니다.
+`.env.local`과 실제 키는 커밋하지 않습니다. 데모 직전 `pnpm
+collect:public-rentals`를 다시 실행하고 생성물 diff와 보고서 경고만 검수하는 흐름을
+권장합니다.
