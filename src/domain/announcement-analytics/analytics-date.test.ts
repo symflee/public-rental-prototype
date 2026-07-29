@@ -22,7 +22,7 @@ test("기본 기간은 최근 30일이고 사용자 지정 기간은 1년 이내
     from: "2026-07-01",
     to: "2026-07-29",
   });
-  expect(readAnalyticsDateRange("2025-01-01", "2026-07-29")).toEqual({
+  expect(readAnalyticsDateRange("2025-01-01", "2026-07-29", "2026-07-29")).toEqual({
     from: "2026-06-30",
     to: "2026-07-29",
   });

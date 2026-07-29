@@ -144,7 +144,7 @@ function AnalyticsPrimaryMetrics({ dashboard }: Readonly<{ dashboard: AnalyticsD
         id="primary-metrics-heading"
         title="핵심 검증 지표"
       />
-      <dl className="mt-4 grid gap-4 lg:grid-cols-3">
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2">
         {createPrimaryMetrics(dashboard).map(PrimaryMetric)}
       </dl>
     </section>
@@ -157,12 +157,7 @@ function createPrimaryMetrics(dashboard: AnalyticsDashboard): readonly Dashboard
     createCountMetric(
       "페이크 도어 테스트",
       dashboard.announcementInterestCount,
-      "공고가 없는 단지에서 ‘공고 확인해보기’를 누른 횟수입니다.",
-    ),
-    createCountMetric(
-      "실제 공고 열람 클릭 수",
-      dashboard.announcementOpenCount,
-      "모집 중 공고의 공식 상세 페이지로 이동한 횟수입니다.",
+      "공고 확인해보기를 누른 횟수입니다.",
     ),
   ];
 }
@@ -185,7 +180,7 @@ function AnalyticsDetails({ dashboard }: Readonly<{ dashboard: AnalyticsDashboar
   return (
     <section aria-labelledby="analytics-details-heading" className="border-t border-slate-200 pt-8">
       <SectionHeading
-        description="핵심 지표를 해석할 때 참고할 행동 합계와 공고별·단지별 순위입니다."
+        description="실제 공고 열람과 전환율, 단지별 클릭 순위를 확인할 수 있습니다."
         id="analytics-details-heading"
         title="상세 통계"
       />
@@ -221,9 +216,9 @@ function AnalyticsDetailMetrics({ dashboard }: Readonly<{ dashboard: AnalyticsDa
 function createDetailMetrics(dashboard: AnalyticsDashboard): readonly DashboardMetric[] {
   return [
     createCountMetric(
-      "총 공고 확인 행동 수",
-      dashboard.announcementActionCount,
-      "실제 공고 열람과 페이크 도어 클릭을 합산한 수치입니다.",
+      "실제 공고 열람 클릭 수",
+      dashboard.announcementOpenCount,
+      "모집 중 공고의 공식 상세 페이지로 이동한 횟수입니다.",
     ),
     {
       description: "지도 조회수 대비 공고 확인 행동의 비율입니다.",
@@ -245,14 +240,9 @@ function DetailMetric(metric: DashboardMetric) {
 
 function AnalyticsRankings({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
   return (
-    <div className="mt-6 grid gap-6 lg:grid-cols-2">
+    <div className="mt-6 max-w-2xl">
       <AnalyticsRanking
-        heading="공고별 열람 클릭 수"
-        ranks={dashboard.announcementRanks}
-        readLabel={readAnnouncementLabel}
-      />
-      <AnalyticsRanking
-        heading="단지별 확인 의향 클릭 수"
+        heading="단지별 공고 확인해보기 클릭 수"
         ranks={dashboard.locationRanks}
         readLabel={readLocationLabel}
       />
@@ -271,7 +261,7 @@ function AnalyticsRanking({
 }>) {
   return (
     <section className="rounded-xl border border-slate-200 p-5">
-      <h2 className="font-bold text-slate-950">{heading}</h2>
+      <h3 className="font-bold text-slate-950">{heading}</h3>
       <ol className="mt-3 space-y-2">
         {ranks.map((rank) => (
           <AnalyticsRankItem key={rank.subjectId} rank={rank} readLabel={readLabel} />
@@ -297,18 +287,6 @@ function AnalyticsRankItem({
 function EmptyRanking({ ranks }: Readonly<{ ranks: readonly AnalyticsRank[] }>) {
   if (ranks.length > 0) return null;
   return <p className="mt-3 text-sm text-slate-500">해당 기간의 행동 기록이 없습니다.</p>;
-}
-
-function readAnnouncementLabel(announcementId: string) {
-  const notice = publicRentalSnapshot.locations
-    .flatMap(readRecruitmentNotices)
-    .find((value) => value.id === announcementId);
-  if (!notice) return announcementId;
-  return notice.title;
-}
-
-function readRecruitmentNotices(location: (typeof publicRentalSnapshot.locations)[number]) {
-  return location.recruitmentNotices ?? [];
 }
 
 function readLocationLabel(locationId: string) {
