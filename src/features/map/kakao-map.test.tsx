@@ -14,7 +14,9 @@ const renderKakaoMapMock = vi.mocked(renderKakaoMap);
 const controller = {
   destroy: vi.fn(),
   fitMarkers: vi.fn(),
+  focusBounds: vi.fn(),
   focusMarker: vi.fn(),
+  readViewport: vi.fn(),
   readVisibleLocationIds: vi.fn<() => readonly string[]>(),
   relayout: vi.fn(),
   replaceMarkers: vi.fn(),
@@ -55,11 +57,40 @@ const LOCATIONS = [
 
 beforeEach(() => {
   renderKakaoMapMock.mockResolvedValue(controller as never);
+  controller.readViewport.mockReturnValue(undefined);
   controller.readVisibleLocationIds.mockReturnValue([]);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
+
+test("지도 준비 후 현재 영역의 집계 핀만 API에서 요청한다", async () => {
+  controller.readViewport.mockReturnValue({
+    east: 127.3,
+    height: 800,
+    level: 10,
+    north: 37.7,
+    south: 37.1,
+    west: 126.9,
+    width: 1200,
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createClusterResponse()));
+
+  render(<KakaoMap javascriptKey="javascript-key" />);
+
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  expect(fetch).toHaveBeenCalledWith(
+    expect.stringContaining("/api/public-rentals?"),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  await waitFor(() => expect(readLatestReplacementIdentifiers()).toEqual(["cluster:3:2"]));
+  act(() => readLatestReplacementMarkers()[0]?.onClick?.("cluster:3:2"));
+  expect(controller.focusBounds).toHaveBeenCalledWith(
+    { east: 127.2, north: 37.5, south: 37.4, west: 127.1 },
+    expect.any(Object),
+  );
 });
 
 test("키가 없어도 성남·용인 위치 목록과 설정 안내를 표시한다", () => {
@@ -177,35 +208,6 @@ test("결과가 없을 때 안내하고 필터 초기화로 전체 목록을 복
   expect(screen.getByText("조건에 맞는 임대주택이 없습니다.")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
   expect(screen.getByText("총 3곳")).toBeVisible();
-});
-
-test("지도 이동 뒤 현재 영역 후보를 명시적으로 적용할 때만 목록을 좁힌다", async () => {
-  controller.readVisibleLocationIds.mockReturnValue(["lh:seongnam:three"]);
-  render(<KakaoMap javascriptKey="javascript-key" locations={LOCATIONS} />);
-  await waitForMapReady();
-
-  act(readViewportChanged);
-
-  expect(screen.getByText("총 3곳")).toBeVisible();
-  const applyButton = screen.getByRole("button", { name: "이 지도 영역에서 보기 · 1곳" });
-  fireEvent.click(applyButton);
-
-  expect(screen.getByText("총 1곳")).toBeVisible();
-  expect(screen.getByRole("button", { name: "성남 복합임대 선택" })).toBeVisible();
-  expect(controller.fitMarkers).not.toHaveBeenCalledTimes(2);
-});
-
-test("전체 위치 보기로 지도 영역 제한을 해제하고 결과에 맞춘다", async () => {
-  controller.readVisibleLocationIds.mockReturnValue(["lh:seongnam:three"]);
-  render(<KakaoMap javascriptKey="javascript-key" locations={LOCATIONS} />);
-  await waitForMapReady();
-  act(readViewportChanged);
-  fireEvent.click(screen.getByRole("button", { name: "이 지도 영역에서 보기 · 1곳" }));
-
-  fireEvent.click(screen.getByRole("button", { name: "전체 위치 보기" }));
-
-  expect(screen.getByText("총 3곳")).toBeVisible();
-  await waitFor(() => expect(controller.fitMarkers).toHaveBeenCalledTimes(2));
 });
 
 test("목록을 선택하면 지도 핀과 상세를 같은 위치 ID로 연결한다", async () => {
@@ -342,18 +344,37 @@ function readRenderedMarkers() {
 }
 
 function readLatestReplacementIdentifiers() {
-  const calls = controller.replaceMarkers.mock.calls;
-  const latest = calls[calls.length - 1]?.[0] ?? [];
+  const latest = readLatestReplacementMarkers();
   return latest.map((marker: { locationId: string }) => marker.locationId);
 }
 
-function readViewportChanged() {
-  const configuration = renderKakaoMapMock.mock.calls[0]?.[2] as {
-    onViewportChanged?: () => void;
-  };
-  configuration.onViewportChanged?.();
+function readLatestReplacementMarkers() {
+  const calls = controller.replaceMarkers.mock.calls;
+  return calls[calls.length - 1]?.[0] ?? [];
 }
 
 function readDetail() {
   return screen.getByRole("region", { name: "선택한 임대주택 상세" });
+}
+
+function createClusterResponse() {
+  return new Response(
+    JSON.stringify({
+      generatedAt: "2026-07-29T12:00:00.000Z",
+      map: {
+        clusters: [
+          {
+            bounds: { east: 127.2, north: 37.5, south: 37.4, west: 127.1 },
+            coordinate: { latitude: 37.45, longitude: 127.15 },
+            count: 42,
+            id: "cluster:3:2",
+          },
+        ],
+        locations: [],
+        mode: "clusters",
+        totalLocationCount: 42,
+      },
+      status: "verified",
+    }),
+  );
 }

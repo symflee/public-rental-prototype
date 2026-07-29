@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from "react";
 
 import type {
+  PublicRentalMapCluster,
+  PublicRentalMapViewport,
   PublicRentalLegalCategory,
   PublicRentalLocation,
   PublicRentalMunicipality,
 } from "@/domain/public-rental";
+import { createGyeonggiMunicipalities } from "@/domain/public-rental";
 import {
   renderKakaoMap,
   type KakaoMapController,
+  type MapBounds,
   type MapMarkerConfiguration,
   type MapPadding,
 } from "@/infrastructure/kakao/kakao-map-sdk";
@@ -25,6 +29,7 @@ import {
   toggleCategory,
   type MunicipalityFilter,
 } from "./map-location-filter";
+import { usePublicRentalMapData, type PublicRentalMapData } from "./public-rental-map-data";
 
 const GYEONGGI_CENTER = {
   latitude: 37.45,
@@ -46,11 +51,19 @@ const DESKTOP_MAP_PADDING: MapPadding = {
   top: 24,
 };
 
+const ALL_PUBLIC_RENTAL_CATEGORIES = [
+  "NATIONAL_RENTAL",
+  "PERMANENT_RENTAL",
+  "HAPPY_HOUSING",
+  "INTEGRATED_PUBLIC_RENTAL",
+  "PUBLIC_RENTAL",
+  "PURCHASE_RENTAL",
+] as const satisfies readonly PublicRentalLegalCategory[];
+const ALL_GYEONGGI_MUNICIPALITIES = createGyeonggiMunicipalities();
+
 type KakaoMapProperties = Readonly<{
   javascriptKey?: string;
-  locations: readonly PublicRentalLocation[];
-  snapshotGeneratedAt?: string;
-  snapshotStatus?: "partial" | "verified";
+  locations?: readonly PublicRentalLocation[];
 }>;
 
 type MapState = Readonly<{
@@ -87,6 +100,7 @@ type ExplorerModel = Readonly<{
   availableMunicipalities: readonly PublicRentalMunicipality[];
   displayedLocations: readonly PublicRentalLocation[];
   pendingLocationCount: number | undefined;
+  mapData: PublicRentalMapData;
   selectedLocation: PublicRentalLocation | undefined;
   selectedLocationId: string | undefined;
   state: ExplorerState;
@@ -118,15 +132,25 @@ const MISSING_KEY_STATE: MapState = { reason: "missing-key", status: "error" };
 export function KakaoMap(properties: KakaoMapProperties) {
   const containerReference = useRef<HTMLDivElement>(null);
   const controllerReference = useRef<KakaoMapController | undefined>(undefined);
+  const [viewport, setViewport] = useState<PublicRentalMapViewport | undefined>(undefined);
   const references = useMemo(
     () => ({ containerReference, controllerReference }),
     [containerReference, controllerReference],
   );
-  const explorer = useMapExplorer(properties.locations);
-  const markers = useMarkers(explorer.displayedLocations, explorer.actions.selectLocation);
-  const mapState = useMapRuntime(createRuntimeInput(properties, explorer, markers), references);
+  const explorer = useMapExplorer(properties.locations, viewport);
   const interactions = useMapInteractions(explorer, controllerReference);
-  const layout = createLayoutProperties(properties, explorer, mapState, interactions);
+  const onViewportChanged = useViewportChangeHandler(controllerReference, setViewport);
+  const locationMarkers = useMarkers(explorer.displayedLocations, explorer.actions.selectLocation);
+  const clusterMarkers = useClusterMarkers(explorer.mapData.clusters, interactions.onClusterSelect);
+  const markers = useMemo(
+    () => [...locationMarkers, ...clusterMarkers],
+    [clusterMarkers, locationMarkers],
+  );
+  const mapState = useMapRuntime(
+    createRuntimeInput(properties, explorer, markers, onViewportChanged),
+    references,
+  );
+  const layout = createLayoutProperties(explorer, mapState, interactions);
   return <KakaoMapLayout {...layout} containerReference={containerReference} />;
 }
 
@@ -135,7 +159,7 @@ type MapRuntimeInput = Readonly<{
   fitRevision: number;
   javascriptKey: string | undefined;
   markers: readonly MapMarkerConfiguration[];
-  onViewportChanged: (locationIds: readonly string[]) => void;
+  onViewportChanged: () => void;
   selectedLocationId: string | undefined;
 }>;
 
@@ -148,13 +172,14 @@ function createRuntimeInput(
   properties: KakaoMapProperties,
   explorer: ExplorerModel,
   markers: readonly MapMarkerConfiguration[],
+  onViewportChanged: () => void,
 ): MapRuntimeInput {
   return {
     expanded: explorer.state.expanded,
     fitRevision: explorer.state.fitRevision,
     javascriptKey: properties.javascriptKey,
     markers,
-    onViewportChanged: explorer.actions.reportViewport,
+    onViewportChanged,
     selectedLocationId: explorer.selectedLocationId,
   };
 }
@@ -175,13 +200,11 @@ function useMapController(input: MapRuntimeInput, references: MapReferences) {
   const javascriptKey = input.javascriptKey;
   const onViewportChanged = input.onViewportChanged;
   useEffect(() => {
-    const viewportHandler = () =>
-      reportVisibleLocations(references.controllerReference.current, onViewportChanged);
     return startMapController(
       javascriptKey,
       references,
       initialMarkers.current,
-      viewportHandler,
+      onViewportChanged,
       setMapState,
     );
   }, [javascriptKey, onViewportChanged, references]);
@@ -222,7 +245,9 @@ function renderController(
   setMapState(LOADING_STATE);
   const configuration = { ...GYEONGGI_CENTER, onViewportChanged };
   renderKakaoMap(container, javascriptKey.trim(), configuration, markers)
-    .then((controller) => completeController(controller, lifecycle, references, setMapState))
+    .then((controller) =>
+      completeController(controller, lifecycle, onViewportChanged, references, setMapState),
+    )
     .catch(() => failController(lifecycle, setMapState));
   return () => stopController(lifecycle, references.controllerReference);
 }
@@ -230,12 +255,14 @@ function renderController(
 function completeController(
   controller: KakaoMapController,
   lifecycle: ControllerLifecycle,
+  onViewportChanged: () => void,
   references: MapReferences,
   setMapState: Dispatch<SetStateAction<MapState>>,
 ) {
   if (!lifecycle.active) return controller.destroy();
   references.controllerReference.current = controller;
   setMapState(READY_STATE);
+  onViewportChanged();
 }
 
 function failController(
@@ -314,18 +341,24 @@ function useMapRelayout(
   }, [controllerReference, expanded, mapState]);
 }
 
-function useMapExplorer(locations: readonly PublicRentalLocation[]): ExplorerModel {
+function useMapExplorer(
+  staticLocations: readonly PublicRentalLocation[] | undefined,
+  viewport: PublicRentalMapViewport | undefined,
+): ExplorerModel {
   const [state, setState] = useState<ExplorerState>(INITIAL_EXPLORER_STATE);
   const actions = useMemo(() => createExplorerActions(setState), []);
+  const filter = useMemo(
+    () => createMapFilter(state.categories, state.municipality, state.query),
+    [state.categories, state.municipality, state.query],
+  );
+  const mapData = usePublicRentalMapData(staticLocations, viewport, filter);
+  const locations = mapData.locations;
   const filtered = useFilteredLocations(locations, state);
   const displayed = useViewportLocations(filtered, state.viewportLocationIds);
   const selectedLocation = findLocation(displayed, state.selectedLocationId);
   const pendingLocationCount = readPendingLocationCount(filtered, displayed, state);
-  const availableCategories = useMemo(() => createAvailableCategories(locations), [locations]);
-  const availableMunicipalities = useMemo(
-    () => createAvailableMunicipalities(locations),
-    [locations],
-  );
+  const availableCategories = readAvailableCategories(locations);
+  const availableMunicipalities = readAvailableMunicipalities(locations);
   return createExplorerModel(
     state,
     actions,
@@ -334,7 +367,28 @@ function useMapExplorer(locations: readonly PublicRentalLocation[]): ExplorerMod
     pendingLocationCount,
     availableCategories,
     availableMunicipalities,
+    mapData,
   );
+}
+
+function readAvailableCategories(locations: readonly PublicRentalLocation[]) {
+  const categories = createAvailableCategories(locations);
+  if (categories.length > 0) return categories;
+  return ALL_PUBLIC_RENTAL_CATEGORIES;
+}
+
+function readAvailableMunicipalities(locations: readonly PublicRentalLocation[]) {
+  const municipalities = createAvailableMunicipalities(locations);
+  if (municipalities.length > 0) return municipalities;
+  return ALL_GYEONGGI_MUNICIPALITIES;
+}
+
+function createMapFilter(
+  categories: readonly PublicRentalLegalCategory[],
+  municipality: MunicipalityFilter,
+  query: string,
+) {
+  return { categories, municipality, query };
 }
 
 function useFilteredLocations(locations: readonly PublicRentalLocation[], state: ExplorerState) {
@@ -362,6 +416,7 @@ function createExplorerModel(
   pendingLocationCount: number | undefined,
   availableCategories: readonly PublicRentalLegalCategory[],
   availableMunicipalities: readonly PublicRentalMunicipality[],
+  mapData: PublicRentalMapData,
 ): ExplorerModel {
   const selectedLocationId = selectedLocation?.id;
   return {
@@ -369,6 +424,7 @@ function createExplorerModel(
     availableCategories,
     availableMunicipalities,
     displayedLocations,
+    mapData,
     pendingLocationCount,
     selectedLocation,
     selectedLocationId,
@@ -511,6 +567,35 @@ function createMarker(
   };
 }
 
+function useClusterMarkers(
+  clusters: readonly PublicRentalMapCluster[],
+  onSelect: (bounds: MapBounds) => void,
+) {
+  return useMemo(() => createClusterMarkers(clusters, onSelect), [clusters, onSelect]);
+}
+
+function createClusterMarkers(
+  clusters: readonly PublicRentalMapCluster[],
+  onSelect: (bounds: MapBounds) => void,
+) {
+  return clusters.map((cluster) => createClusterMarker(cluster, onSelect));
+}
+
+function createClusterMarker(
+  cluster: PublicRentalMapCluster,
+  onSelect: (bounds: MapBounds) => void,
+): MapMarkerConfiguration {
+  return {
+    categories: [],
+    clusterCount: cluster.count,
+    latitude: cluster.coordinate.latitude,
+    locationId: cluster.id,
+    longitude: cluster.coordinate.longitude,
+    onClick: () => onSelect(cluster.bounds),
+    title: `${cluster.count.toLocaleString("ko-KR")}곳 확대`,
+  };
+}
+
 type MapLayoutProperties = Readonly<{
   controls: ComponentProps<typeof MapControls>;
   mapState: MapState;
@@ -518,6 +603,7 @@ type MapLayoutProperties = Readonly<{
 }>;
 
 type MapInteractions = Readonly<{
+  onClusterSelect: (bounds: MapBounds) => void;
   onListSelect: (locationId: string) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -533,17 +619,18 @@ function useMapInteractions(
   };
   const onZoomIn = () => controllerReference.current?.zoomIn();
   const onZoomOut = () => controllerReference.current?.zoomOut();
-  return { onListSelect, onZoomIn, onZoomOut };
+  const onClusterSelect = (bounds: MapBounds) =>
+    controllerReference.current?.focusBounds(bounds, readMapPadding(false));
+  return { onClusterSelect, onListSelect, onZoomIn, onZoomOut };
 }
 
 function createLayoutProperties(
-  properties: KakaoMapProperties,
   explorer: ExplorerModel,
   mapState: MapState,
   interactions: MapInteractions,
 ): MapLayoutProperties {
   const controls = createControlProperties(explorer, mapState, interactions);
-  const panel = createPanelProperties(properties, explorer, interactions);
+  const panel = createPanelProperties(explorer, interactions);
   return { controls, mapState, panel };
 }
 
@@ -564,7 +651,6 @@ function createControlProperties(
 }
 
 function createPanelProperties(
-  properties: KakaoMapProperties,
   explorer: ExplorerModel,
   interactions: MapInteractions,
 ): MapLocationPanelProperties {
@@ -573,7 +659,9 @@ function createPanelProperties(
     availableMunicipalities: explorer.availableMunicipalities,
     categories: explorer.state.categories,
     expanded: explorer.state.expanded,
-    generatedAt: properties.snapshotGeneratedAt,
+    clustered: explorer.mapData.mode === "clusters",
+    generatedAt: explorer.mapData.generatedAt,
+    locationCount: readPanelLocationCount(explorer),
     locations: explorer.displayedLocations,
     municipality: explorer.state.municipality,
     onCategoryToggle: explorer.actions.toggleCategory,
@@ -585,8 +673,13 @@ function createPanelProperties(
     query: explorer.state.query,
     selectedLocation: explorer.selectedLocation,
     selectedLocationId: explorer.selectedLocationId,
-    status: properties.snapshotStatus,
+    status: explorer.mapData.status,
   };
+}
+
+function readPanelLocationCount(explorer: ExplorerModel) {
+  if (explorer.mapData.mode === "clusters") return explorer.mapData.totalLocationCount;
+  return explorer.displayedLocations.length;
 }
 
 function KakaoMapLayout(
@@ -683,12 +776,26 @@ function hasCoordinate(location: PublicRentalLocation): location is LocatedPubli
   return location.coordinate !== null;
 }
 
-function reportVisibleLocations(
-  controller: KakaoMapController | undefined,
-  report: (locationIds: readonly string[]) => void,
+function useViewportChangeHandler(
+  controllerReference: RefObject<KakaoMapController | undefined>,
+  setViewport: Dispatch<SetStateAction<PublicRentalMapViewport | undefined>>,
 ) {
-  if (!controller) return;
-  report(controller.readVisibleLocationIds());
+  return useCallback(
+    () => updateViewport(controllerReference, setViewport),
+    [controllerReference, setViewport],
+  );
+}
+
+function updateViewport(
+  controllerReference: RefObject<KakaoMapController | undefined>,
+  setViewport: Dispatch<SetStateAction<PublicRentalMapViewport | undefined>>,
+) {
+  setViewport(readMapViewport(controllerReference.current));
+}
+
+function readMapViewport(controller: KakaoMapController | undefined) {
+  if (!controller) return undefined;
+  return controller.readViewport();
 }
 
 function readViewportSelection(state: ExplorerState) {

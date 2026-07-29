@@ -31,6 +31,14 @@ export {
   type RentalOffering,
 } from "./public-rental-location";
 export {
+  createPublicRentalMapResult,
+  type PublicRentalMapCluster,
+  type PublicRentalMapFilter,
+  type PublicRentalMapRequest,
+  type PublicRentalMapResult,
+  type PublicRentalMapViewport,
+} from "./public-rental-map-query";
+export {
   validatePublicRentalLocations,
   type PublicRentalValidationIssue,
   type PublicRentalValidationIssueCode,

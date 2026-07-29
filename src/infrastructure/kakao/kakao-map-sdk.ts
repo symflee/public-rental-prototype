@@ -14,6 +14,8 @@ const KAKAO_MAP_MAX_LEVEL = 14;
 const CLUSTER_CLICK_PADDING = 48;
 const DETAIL_OVERLAY_Z_INDEX = 30;
 const DETAIL_OVERLAY_MEDIA_QUERY = "(min-width: 768px)";
+const AGGREGATE_MARKER_BACKGROUND = "#172554";
+const AGGREGATE_MARKER_BORDER = "#ffffff";
 
 export type MapPadding = Readonly<{
   bottom: number;
@@ -33,6 +35,20 @@ export type MapMarkerDetail = Readonly<{
   rows: readonly MapMarkerDetailRow[];
 }>;
 
+export type MapBounds = Readonly<{
+  east: number;
+  north: number;
+  south: number;
+  west: number;
+}>;
+
+export type MapViewport = MapBounds &
+  Readonly<{
+    height: number;
+    level: number;
+    width: number;
+  }>;
+
 export type KakaoMapConfiguration = Readonly<{
   latitude: number;
   level: number;
@@ -42,6 +58,7 @@ export type KakaoMapConfiguration = Readonly<{
 
 export type MapMarkerConfiguration = Readonly<{
   categories: readonly MapMarkerCategory[];
+  clusterCount?: number;
   detail?: MapMarkerDetail;
   latitude: number;
   locationId: string;
@@ -55,7 +72,9 @@ export type KakaoMapMarkerConfiguration = MapMarkerConfiguration;
 export type KakaoMapController = Readonly<{
   destroy: () => void;
   fitMarkers: (padding: MapPadding) => void;
+  focusBounds: (bounds: MapBounds, padding: MapPadding) => void;
   focusMarker: (locationId: string, padding: MapPadding) => void;
+  readViewport: () => MapViewport | undefined;
   readVisibleLocationIds: () => readonly string[];
   relayout: () => void;
   replaceMarkers: (markers: readonly MapMarkerConfiguration[]) => void;
@@ -66,7 +85,10 @@ export type KakaoMapController = Readonly<{
 
 type KakaoEventHandler = (...arguments_: readonly unknown[]) => void;
 type KakaoEventTarget = object;
-type KakaoLatLngInstance = object;
+type KakaoLatLngInstance = Readonly<{
+  getLat: () => number;
+  getLng: () => number;
+}>;
 type KakaoCustomOverlayInstance = Readonly<{
   setContent: (content: HTMLElement) => void;
   setMap: (map: KakaoMapInstance | null) => void;
@@ -79,6 +101,8 @@ type KakaoSizeInstance = object;
 type KakaoLatLngBoundsInstance = Readonly<{
   contain: (position: KakaoLatLngInstance) => boolean;
   extend: (position: KakaoLatLngInstance) => void;
+  getNorthEast: () => KakaoLatLngInstance;
+  getSouthWest: () => KakaoLatLngInstance;
 }>;
 
 type KakaoMapInstance = Readonly<{
@@ -200,6 +224,7 @@ type MarkerRecord = Readonly<{
 
 type ControllerResources = Readonly<{
   clusterer: KakaoMarkerClustererInstance;
+  container: HTMLElement;
   map: KakaoMapInstance;
   maps: KakaoMapsApi;
 }>;
@@ -350,7 +375,7 @@ function createControllerResources(
   const center = new maps.LatLng(configuration.latitude, configuration.longitude);
   const map = new maps.Map(container, createMapOptions(center, configuration.level));
   const clusterer = new maps.MarkerClusterer(createClustererOptions(map));
-  return { clusterer, map, maps };
+  return { clusterer, container, map, maps };
 }
 
 function createControllerState(
@@ -379,7 +404,9 @@ function createController(state: ControllerState): KakaoMapController {
   return {
     destroy: () => destroyController(state),
     fitMarkers: (padding) => fitMarkers(state, padding),
+    focusBounds: (bounds, padding) => focusBounds(state, bounds, padding),
     focusMarker: (locationId, padding) => focusMarker(state, locationId, padding),
+    readViewport: () => readMapViewport(state),
     readVisibleLocationIds: () => readVisibleLocationIds(state),
     relayout: () => relayoutMap(state),
     replaceMarkers: (markers) => replaceMarkers(state, markers),
@@ -402,6 +429,7 @@ function createLeaseController(state: ControllerLeaseState): KakaoMapController 
   return {
     ...createLeaseMapActions(state),
     destroy: () => releaseControllerLease(state),
+    readViewport: () => readLeaseViewport(state),
     readVisibleLocationIds: () => readLeaseVisibleLocationIds(state),
   };
 }
@@ -410,6 +438,8 @@ function createLeaseMapActions(state: ControllerLeaseState) {
   return {
     fitMarkers: (padding: MapPadding) =>
       runLeaseAction(state, (controller) => controller.fitMarkers(padding)),
+    focusBounds: (bounds: MapBounds, padding: MapPadding) =>
+      runLeaseAction(state, (controller) => controller.focusBounds(bounds, padding)),
     focusMarker: (locationId: string, padding: MapPadding) =>
       runLeaseAction(state, (controller) => controller.focusMarker(locationId, padding)),
     relayout: () => runLeaseAction(state, (controller) => controller.relayout()),
@@ -433,6 +463,11 @@ function runLeaseAction(
 function readLeaseVisibleLocationIds(state: ControllerLeaseState) {
   if (!state.active) return [];
   return state.controller.readVisibleLocationIds();
+}
+
+function readLeaseViewport(state: ControllerLeaseState) {
+  if (!state.active) return undefined;
+  return state.controller.readViewport();
 }
 
 function releaseControllerLease(state: ControllerLeaseState) {
@@ -465,7 +500,7 @@ function createMarkerRecord(
   configuration: MapMarkerConfiguration,
 ): MarkerRecord {
   const position = new maps.LatLng(configuration.latitude, configuration.longitude);
-  const image = createKakaoMarkerImage(maps, configuration.categories, false);
+  const image = createKakaoMarkerImage(maps, configuration, false);
   const marker = new maps.Marker(createMarkerOptions(configuration, position, image));
   const clickHandler = createMarkerClickHandler(configuration);
   registerOptionalEvent(maps.event, marker, "click", clickHandler);
@@ -529,11 +564,7 @@ function updateSelectedMarker(
 }
 
 function updateMarkerSelection(state: ControllerState, record: MarkerRecord, selected: boolean) {
-  const image = createKakaoMarkerImage(
-    state.resources.maps,
-    record.configuration.categories,
-    selected,
-  );
+  const image = createKakaoMarkerImage(state.resources.maps, record.configuration, selected);
   record.marker.setImage(image);
   record.marker.setZIndex(readMarkerZIndex(selected));
 }
@@ -640,13 +671,36 @@ function createDetailAddress(address: string) {
 
 function createKakaoMarkerImage(
   maps: KakaoMapsApi,
-  categories: readonly MapMarkerCategory[],
+  configuration: MapMarkerConfiguration,
   selected: boolean,
 ) {
-  const image = createMapMarkerImage(categories, selected);
+  const count = configuration.clusterCount;
+  if (count !== undefined) return createAggregateMarkerImage(maps, count);
+  const image = createMapMarkerImage(configuration.categories, selected);
   const size = new maps.Size(image.width, image.height);
   const offset = new maps.Point(image.width / 2, image.height);
   return new maps.MarkerImage(image.source, size, { offset });
+}
+
+function createAggregateMarkerImage(maps: KakaoMapsApi, count: number) {
+  const dimension = readAggregateMarkerDimension(count);
+  const source = createAggregateMarkerSource(count, dimension);
+  const size = new maps.Size(dimension, dimension);
+  const offset = new maps.Point(dimension / 2, dimension / 2);
+  return new maps.MarkerImage(source, size, { offset });
+}
+
+function readAggregateMarkerDimension(count: number) {
+  if (count >= 1000) return 64;
+  if (count >= 100) return 56;
+  return 48;
+}
+
+function createAggregateMarkerSource(count: number, dimension: number) {
+  const label = count.toLocaleString("ko-KR");
+  const radius = dimension / 2 - 3;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${dimension}" height="${dimension}"><circle cx="${dimension / 2}" cy="${dimension / 2}" r="${radius}" fill="${AGGREGATE_MARKER_BACKGROUND}" stroke="${AGGREGATE_MARKER_BORDER}" stroke-width="3"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="13" font-weight="800">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function readMarkerZIndex(selected: boolean) {
@@ -666,6 +720,19 @@ function focusMarker(state: ControllerState, locationId: string, padding: MapPad
   const record = state.markerRecords.get(locationId);
   if (!record) return;
   focusMapPosition(state.resources.map, record.position, padding);
+}
+
+function focusBounds(state: ControllerState, bounds: MapBounds, padding: MapPadding) {
+  if (state.lifecycle.destroyed) return;
+  const kakaoBounds = createKakaoBounds(state.resources.maps, bounds);
+  setMapBounds(state.resources.map, kakaoBounds, padding);
+}
+
+function createKakaoBounds(maps: KakaoMapsApi, bounds: MapBounds) {
+  const kakaoBounds = new maps.LatLngBounds();
+  kakaoBounds.extend(new maps.LatLng(bounds.south, bounds.west));
+  kakaoBounds.extend(new maps.LatLng(bounds.north, bounds.east));
+  return kakaoBounds;
 }
 
 function createMarkerBounds(maps: KakaoMapsApi, records: IterableIterator<MarkerRecord>) {
@@ -700,6 +767,30 @@ function readVisibleLocationIds(state: ControllerState) {
   return Array.from(state.markerRecords.values())
     .filter((record) => bounds.contain(record.position))
     .map((record) => record.configuration.locationId);
+}
+
+function readMapViewport(state: ControllerState): MapViewport | undefined {
+  if (state.lifecycle.destroyed) return undefined;
+  const bounds = state.resources.map.getBounds();
+  const northEast = bounds.getNorthEast();
+  const southWest = bounds.getSouthWest();
+  return {
+    east: northEast.getLng(),
+    height: readViewportHeight(state.resources.container),
+    level: state.resources.map.getLevel(),
+    north: northEast.getLat(),
+    south: southWest.getLat(),
+    west: southWest.getLng(),
+    width: readViewportWidth(state.resources.container),
+  };
+}
+
+function readViewportWidth(container: HTMLElement) {
+  return Math.max(320, container.clientWidth);
+}
+
+function readViewportHeight(container: HTMLElement) {
+  return Math.max(480, container.clientHeight);
 }
 
 function changeZoom(state: ControllerState, change: number) {
@@ -802,7 +893,7 @@ function createClustererOptions(map: KakaoMapInstance): KakaoMarkerClustererOpti
     map,
     markers: [],
     minClusterSize: 2,
-    minLevel: 6,
+    minLevel: 7,
     styles: CLUSTER_STYLES,
   };
 }

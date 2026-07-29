@@ -20,8 +20,10 @@ export type MapLocationPanelProperties = Readonly<{
   availableCategories: readonly PublicRentalLegalCategory[];
   availableMunicipalities: readonly PublicRentalMunicipality[];
   categories: readonly PublicRentalLegalCategory[];
+  clustered?: boolean;
   expanded: boolean;
   generatedAt?: string;
+  locationCount?: number;
   locations: readonly PublicRentalLocation[];
   municipality: MunicipalityFilter;
   onCategoryToggle: (category: PublicRentalLegalCategory) => void;
@@ -49,11 +51,16 @@ export function MapLocationPanel(properties: MapLocationPanelProperties) {
 function PanelHeader(properties: MapLocationPanelProperties) {
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
-      <PanelTitle count={properties.locations.length} />
+      <PanelTitle count={readLocationCount(properties)} />
       <MobileSheetToggle {...properties} />
       <SnapshotNotice generatedAt={properties.generatedAt} status={properties.status} />
     </header>
   );
+}
+
+function readLocationCount(properties: MapLocationPanelProperties) {
+  if (properties.locationCount !== undefined) return properties.locationCount;
+  return properties.locations.length;
 }
 
 function PanelTitle({ count }: Readonly<{ count: number }>) {
@@ -223,7 +230,8 @@ function ResetFilterButton(properties: MapLocationPanelProperties) {
 }
 
 function LocationList(properties: MapLocationPanelProperties) {
-  if (properties.locations.length === 0) return <EmptyLocationList />;
+  if (properties.locations.length === 0)
+    return <EmptyLocationList clustered={properties.clustered} />;
   return (
     <ul aria-label="임대주택 위치 목록" className="space-y-2 p-3">
       {properties.locations.map((location) => (
@@ -238,11 +246,21 @@ function LocationList(properties: MapLocationPanelProperties) {
   );
 }
 
-function EmptyLocationList() {
+function EmptyLocationList({ clustered }: Readonly<{ clustered?: boolean }>) {
+  if (clustered) return <ClusteredLocationList />;
   return (
     <div className="p-5 text-center text-sm text-slate-500">
       <p>조건에 맞는 임대주택이 없습니다.</p>
       <p className="mt-1 text-xs">도시나 공급유형 필터를 조정해 보세요.</p>
+    </div>
+  );
+}
+
+function ClusteredLocationList() {
+  return (
+    <div className="p-5 text-center text-sm text-slate-500">
+      <p>지도를 확대하면 개별 주택 핀과 목록을 볼 수 있습니다.</p>
+      <p className="mt-1 text-xs">숫자 핀을 선택하면 해당 영역으로 이동합니다.</p>
     </div>
   );
 }

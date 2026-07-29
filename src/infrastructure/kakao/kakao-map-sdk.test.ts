@@ -195,6 +195,39 @@ test("현재 지도 영역에 포함된 위치 ID만 반환한다", async () => 
   expect(controller.readVisibleLocationIds()).toEqual(["seongnam-1"]);
 });
 
+test("현재 지도 영역과 화면 크기를 API 요청용 viewport로 반환한다", async () => {
+  const fixture = createMapFixture();
+  Object.defineProperty(fixture.container, "clientHeight", { value: 720 });
+  Object.defineProperty(fixture.container, "clientWidth", { value: 1024 });
+  const controller = await renderFixtureMap(fixture, MARKERS);
+
+  expect(controller.readViewport()).toEqual({
+    east: 127.4,
+    height: 720,
+    level: 8,
+    north: 37.8,
+    south: 37.1,
+    west: 126.8,
+    width: 1024,
+  });
+});
+
+test("서버 집계 핀은 해당 격자 bounds로 지도를 확대한다", async () => {
+  const fixture = createMapFixture();
+  const controller = await renderFixtureMap(fixture, MARKERS);
+  const bounds = { east: 127.2, north: 37.5, south: 37.4, west: 127.1 };
+
+  controller.focusBounds(bounds, PADDING);
+
+  expect(fixture.mapInstance.setBounds).toHaveBeenLastCalledWith(
+    expect.objectContaining({ pointCount: 2 }),
+    20,
+    30,
+    40,
+    50,
+  );
+});
+
 test("줌·재배치와 idle 알림을 지도 API에 위임한다", async () => {
   const fixture = createMapFixture();
   const onViewportChanged = vi.fn();
@@ -264,7 +297,7 @@ function createExpectedClusterConfiguration() {
     disableClickZoom: true,
     gridSize: 60,
     minClusterSize: 2,
-    minLevel: 6,
+    minLevel: 7,
     styles: createExpectedClusterStyles(),
   };
 }
@@ -658,15 +691,21 @@ function createSizeConstructor() {
 function createFakeMap() {
   const levelControls = createFakeMapLevelControls();
   return {
-    getBounds: vi.fn(() => ({
-      contain: (position: { longitude: number }) => position.longitude <= 127.2,
-    })),
+    getBounds: vi.fn(createVisibleBounds),
     ...levelControls,
     panBy: vi.fn(),
     panTo: vi.fn(),
     relayout: vi.fn(),
     setCenter: vi.fn(),
     setBounds: vi.fn(),
+  };
+}
+
+function createVisibleBounds() {
+  return {
+    contain: (position: { longitude: number }) => position.longitude <= 127.2,
+    getNorthEast: () => ({ getLat: () => 37.8, getLng: () => 127.4 }),
+    getSouthWest: () => ({ getLat: () => 37.1, getLng: () => 126.8 }),
   };
 }
 
