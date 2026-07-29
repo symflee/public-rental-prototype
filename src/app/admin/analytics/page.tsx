@@ -15,6 +15,12 @@ type AnalyticsPageProperties = Readonly<{
   searchParams: Promise<Readonly<{ from?: string; period?: string; to?: string }>>;
 }>;
 
+type DashboardMetric = Readonly<{
+  description: string;
+  label: string;
+  value: string;
+}>;
+
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProperties) {
   if (!isAnalyticsStorageEnabled()) return <AnalyticsUnavailable />;
   const parameters = await searchParams;
@@ -49,11 +55,13 @@ function AnalyticsDashboardPage({
   range,
 }: Readonly<{ dashboard: AnalyticsDashboard; range: Readonly<{ from: string; to: string }> }>) {
   return (
-    <main className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
-      <AnalyticsHeading range={range} />
-      <AnalyticsSummary dashboard={dashboard} />
-      <AnalyticsRankings dashboard={dashboard} />
-      <AnalyticsCaveat />
+    <main className="h-dvh overflow-y-auto bg-slate-50 py-8">
+      <div className="mx-auto max-w-6xl space-y-10 px-6 pb-20 md:px-10">
+        <AnalyticsHeading range={range} />
+        <AnalyticsPrimaryMetrics dashboard={dashboard} />
+        <AnalyticsDetails dashboard={dashboard} />
+        <AnalyticsCaveat />
+      </div>
     </main>
   );
 }
@@ -61,8 +69,11 @@ function AnalyticsDashboardPage({
 function AnalyticsHeading({ range }: Readonly<{ range: Readonly<{ from: string; to: string }> }>) {
   return (
     <header>
-      <h1 className="text-2xl font-bold text-slate-950">공고 확인 행동 분석</h1>
-      <p className="mt-2 text-sm text-slate-600">개인 식별 없이 집계한 조회·클릭 횟수입니다.</p>
+      <p className="text-sm font-semibold text-emerald-700">기획 검토용 지표</p>
+      <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">공고 확인 행동 분석</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        개인 식별 없이 집계한 지도 조회와 공고 확인 행동입니다.
+      </p>
       <AnalyticsRangePresets />
       <AnalyticsRangeForm range={range} />
     </header>
@@ -117,43 +128,124 @@ function DateInput({
       {label}
       <input
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        defaultValue={value}
         name={name}
         type="date"
-        value={value}
       />
     </label>
   );
 }
 
-function AnalyticsSummary({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
-  const values = createSummaryValues(dashboard);
-  return <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{values.map(SummaryValue)}</dl>;
+function AnalyticsPrimaryMetrics({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
+  return (
+    <section aria-labelledby="primary-metrics-heading">
+      <SectionHeading
+        description="검토자가 먼저 확인할 사용 관심과 수요 신호입니다."
+        id="primary-metrics-heading"
+        title="핵심 검증 지표"
+      />
+      <dl className="mt-4 grid gap-4 lg:grid-cols-3">
+        {createPrimaryMetrics(dashboard).map(PrimaryMetric)}
+      </dl>
+    </section>
+  );
 }
 
-function createSummaryValues(
-  dashboard: AnalyticsDashboard,
-): readonly (readonly [string, string])[] {
+function createPrimaryMetrics(dashboard: AnalyticsDashboard): readonly DashboardMetric[] {
   return [
-    ["지도 조회수", dashboard.pageViewCount.toLocaleString("ko-KR")],
-    ["실제 공고 열람 클릭 수", dashboard.announcementOpenCount.toLocaleString("ko-KR")],
-    ["미연결 확인 의향 클릭 수", dashboard.announcementInterestCount.toLocaleString("ko-KR")],
-    ["총 공고 확인 행동 수", dashboard.announcementActionCount.toLocaleString("ko-KR")],
-    ["조회수 대비 공고 확인 행동률", `${dashboard.announcementActionRate.toFixed(1)}%`],
+    createCountMetric("지도 조회수", dashboard.pageViewCount, "지도를 열어 본 횟수입니다."),
+    createCountMetric(
+      "페이크 도어 테스트",
+      dashboard.announcementInterestCount,
+      "공고가 없는 단지에서 ‘공고 확인해보기’를 누른 횟수입니다.",
+    ),
+    createCountMetric(
+      "실제 공고 열람 클릭 수",
+      dashboard.announcementOpenCount,
+      "모집 중 공고의 공식 상세 페이지로 이동한 횟수입니다.",
+    ),
   ];
 }
 
-function SummaryValue([label, value]: readonly [string, string]) {
+function createCountMetric(label: string, count: number, description: string): DashboardMetric {
+  return { description, label, value: count.toLocaleString("ko-KR") };
+}
+
+function PrimaryMetric(metric: DashboardMetric) {
   return (
-    <div className="rounded-xl bg-slate-100 p-4" key={label}>
-      <dt className="text-xs font-semibold text-slate-600">{label}</dt>
-      <dd className="mt-2 text-2xl font-bold text-slate-950">{value}</dd>
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" key={metric.label}>
+      <dt className="text-sm font-semibold text-slate-700">{metric.label}</dt>
+      <dd className="mt-4 text-4xl font-bold tracking-tight text-slate-950">{metric.value}</dd>
+      <p className="mt-4 text-sm leading-6 text-slate-600">{metric.description}</p>
+    </div>
+  );
+}
+
+function AnalyticsDetails({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
+  return (
+    <section aria-labelledby="analytics-details-heading" className="border-t border-slate-200 pt-8">
+      <SectionHeading
+        description="핵심 지표를 해석할 때 참고할 행동 합계와 공고별·단지별 순위입니다."
+        id="analytics-details-heading"
+        title="상세 통계"
+      />
+      <AnalyticsDetailMetrics dashboard={dashboard} />
+      <AnalyticsRankings dashboard={dashboard} />
+    </section>
+  );
+}
+
+function SectionHeading({
+  description,
+  id,
+  title,
+}: Readonly<{ description: string; id: string; title: string }>) {
+  return (
+    <header>
+      <h2 className="text-xl font-bold text-slate-950" id={id}>
+        {title}
+      </h2>
+      <p className="mt-1 text-sm text-slate-600">{description}</p>
+    </header>
+  );
+}
+
+function AnalyticsDetailMetrics({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
+  return (
+    <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+      {createDetailMetrics(dashboard).map(DetailMetric)}
+    </dl>
+  );
+}
+
+function createDetailMetrics(dashboard: AnalyticsDashboard): readonly DashboardMetric[] {
+  return [
+    createCountMetric(
+      "총 공고 확인 행동 수",
+      dashboard.announcementActionCount,
+      "실제 공고 열람과 페이크 도어 클릭을 합산한 수치입니다.",
+    ),
+    {
+      description: "지도 조회수 대비 공고 확인 행동의 비율입니다.",
+      label: "조회수 대비 공고 확인 행동률",
+      value: `${dashboard.announcementActionRate.toFixed(1)}%`,
+    },
+  ];
+}
+
+function DetailMetric(metric: DashboardMetric) {
+  return (
+    <div className="rounded-xl bg-slate-100 p-4" key={metric.label}>
+      <dt className="text-xs font-semibold text-slate-600">{metric.label}</dt>
+      <dd className="mt-2 text-2xl font-bold text-slate-950">{metric.value}</dd>
+      <p className="mt-2 text-xs leading-5 text-slate-600">{metric.description}</p>
     </div>
   );
 }
 
 function AnalyticsRankings({ dashboard }: Readonly<{ dashboard: AnalyticsDashboard }>) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="mt-6 grid gap-6 lg:grid-cols-2">
       <AnalyticsRanking
         heading="공고별 열람 클릭 수"
         ranks={dashboard.announcementRanks}
