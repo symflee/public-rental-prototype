@@ -38,11 +38,44 @@ test("연결 문자열이 없으면 공개 기능을 막지 않는 비활성 저
   expect(repository.isEnabled()).toBe(false);
 });
 
+test("Neon이 Date 객체로 반환한 일별 카운터도 읽는다", async () => {
+  const executor = createCounterExecutor();
+  const repository = createAnalyticsCounterRepositoryWithExecutor(executor);
+
+  const counters = await repository.read({ from: "2026-07-01", to: "2026-07-31" });
+
+  expect(counters).toEqual([
+    {
+      eventKind: "PAGE_VIEW",
+      metricDate: "2026-07-29",
+      subjectId: "all",
+      subjectKind: "SITE",
+      total: 3,
+    },
+  ]);
+});
+
 function createExecutor(calls: unknown[][]): AnalyticsSqlExecutor {
   return {
     execute: async (statement, parameters) => {
       calls.push([statement, parameters]);
       return [];
     },
+  };
+}
+
+function createCounterExecutor(): AnalyticsSqlExecutor {
+  return {
+    execute: async () => [createDatabaseCounter()],
+  };
+}
+
+function createDatabaseCounter() {
+  return {
+    event_kind: "PAGE_VIEW",
+    metric_date: new Date(2026, 6, 29),
+    subject_id: "all",
+    subject_kind: "SITE",
+    total: "3",
   };
 }

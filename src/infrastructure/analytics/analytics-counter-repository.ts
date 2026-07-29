@@ -117,15 +117,31 @@ function readCounter(value: unknown): AnalyticsCounter[] {
 }
 
 function createCounter(value: Record<string, unknown>): AnalyticsCounter | undefined {
-  const metricDate = value.metric_date;
+  const metricDate = readMetricDate(value.metric_date);
   const eventKind = value.event_kind;
   const subjectKind = value.subject_kind;
   const subjectId = value.subject_id;
   const total = readTotal(value.total);
-  if (!isText(metricDate) || !isEventKind(eventKind) || !isSubjectKind(subjectKind))
-    return undefined;
+  if (!metricDate || !isEventKind(eventKind) || !isSubjectKind(subjectKind)) return undefined;
   if (!isText(subjectId) || total === undefined) return undefined;
   return { eventKind, metricDate, subjectId, subjectKind, total };
+}
+
+function readMetricDate(value: unknown) {
+  if (isText(value)) return value;
+  if (!(value instanceof Date) || Number.isNaN(value.valueOf())) return undefined;
+  return formatDatabaseDate(value);
+}
+
+function formatDatabaseDate(value: Date) {
+  const year = value.getFullYear();
+  const month = formatDatePart(value.getMonth() + 1);
+  const day = formatDatePart(value.getDate());
+  return `${year}-${month}-${day}`;
+}
+
+function formatDatePart(value: number) {
+  return String(value).padStart(2, "0");
 }
 
 function readTotal(value: unknown) {
