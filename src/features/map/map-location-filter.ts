@@ -1,6 +1,11 @@
-import type { PublicRentalLegalCategory, PublicRentalLocation } from "@/domain/public-rental";
+import {
+  createGyeonggiMunicipalities,
+  type PublicRentalLegalCategory,
+  type PublicRentalLocation,
+  type PublicRentalMunicipality,
+} from "@/domain/public-rental";
 
-export type MunicipalityFilter = "ALL" | "SEONGNAM" | "YONGIN";
+export type MunicipalityFilter = "ALL" | PublicRentalMunicipality;
 
 export type MapLocationFilter = Readonly<{
   categories: readonly PublicRentalLegalCategory[];
@@ -27,6 +32,11 @@ export function filterMapLocations(
 export function createAvailableCategories(locations: readonly PublicRentalLocation[]) {
   const categories = new Set(locations.flatMap(readLegalCategories));
   return CATEGORY_ORDER.filter((category) => categories.has(category));
+}
+
+export function createAvailableMunicipalities(locations: readonly PublicRentalLocation[]) {
+  const municipalities = new Set(locations.map(readMunicipality));
+  return createGyeonggiMunicipalities().filter((municipality) => municipalities.has(municipality));
 }
 
 export function toggleCategory(

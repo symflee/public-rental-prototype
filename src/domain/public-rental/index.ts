@@ -1,5 +1,20 @@
 export { normalizeMyHomeRecords, type MyHomeRawRecord } from "./my-home-normalizer";
 export {
+  createGyeonggiMunicipalities,
+  findGyeonggiAddressArea,
+  GYEONGGI_COLLECTION_AREAS,
+  readGyeonggiMunicipalityAddressName,
+  readGyeonggiMunicipalityLabel,
+  type GyeonggiCollectionArea,
+  type GyeonggiDistrict,
+  type GyeonggiMunicipality,
+} from "./gyeonggi-geography";
+export {
+  attachRecruitmentNotices,
+  type PublicRentalRecruitmentCandidate,
+  type RecruitmentAttachmentResult,
+} from "./recruitment-linker";
+export {
   PublicRentalLocations,
   type PublicRentalCoordinate,
   type PublicRentalCoordinateSource,
@@ -10,6 +25,7 @@ export {
   type PublicRentalDistrict,
   type PublicRentalProperty,
   type PublicRentalProvider,
+  type PublicRentalRecruitmentNotice,
   type PublicRentalSource,
   type PublicRentalSourceRecord,
   type RentalOffering,

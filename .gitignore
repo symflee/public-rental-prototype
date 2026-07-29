@@ -36,3 +36,17 @@ pnpm-debug.log*
 
 # Local Codex workspace
 .codex/
+
+# Local Codex notes
+docs/
+
+# Local collection artifacts (the app snapshot is tracked separately)
+src/infrastructure/public-data/generated/api-review/
+src/infrastructure/public-data/generated/collection-report.json
+src/infrastructure/public-data/generated/gyeonggi-collection-report.json
+src/infrastructure/public-data/generated/public-rental-api-failures.json
+src/infrastructure/public-data/generated/public-rental-coordinate-cache.json
+src/infrastructure/public-data/generated/public-rental-coordinate-failures.json
+src/infrastructure/public-data/generated/public-rental-locations.csv
+src/infrastructure/public-data/generated/public-rental-recruitment-failures.json
+src/infrastructure/public-data/generated/*.tmp

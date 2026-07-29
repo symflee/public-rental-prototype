@@ -1,17 +1,20 @@
-# 성남·용인 LH 임대주택 지도
+# 경기도 LH 임대주택 지도
 
-성남시와 용인시의 LH 임대주택을 정적 스냅샷으로 탐색하는 Next.js
+경기도 LH 임대주택과 연결된 모집공고를 정적 스냅샷으로 탐색하는 Next.js
 프로토타입입니다. 앱은 실행 중 외부 주소 API를 호출하지 않으며, 목록과 지도 핀은
 같은 결정적 위치 ID를 사용합니다.
 
-현재 수집 범위는 다음과 같습니다.
+수집기는 경기도 31개 시·군, 42개 시·군·구 요청 코드에서 다음을 수집합니다.
 
-- 성남시 소재 LH 임대주택 87곳
-- 용인시 소재 LH 임대주택 182곳
+- LH가 공급하는 운영 중 공공임대 단지
+- 단지에 안전하게 연결된 모집 중 공고와 마이홈포털 상세 링크
 - 국민임대, 영구임대, 행복주택, 통합공공임대, 공공임대, 매입임대
 
 단대동 행복주택, GH·지방공사, 민간임대, 공공분양, 비주거 임대, 계획사업과
 구체 좌표를 만들 수 없는 주소는 포함하지 않습니다.
+
+저장소에는 경기도 전체 앱 스냅샷을 포함합니다. 아래 API 수집 명령은 검증된 최신 결과로
+이 스냅샷을 교체합니다.
 
 ## 요구 환경
 
@@ -65,18 +68,51 @@ pnpm collect:public-rentals
 5. 기존 앱 좌표와 좌표 캐시를 재사용하고, 나머지만 Kakao 주소 검색으로 변환합니다.
 6. 시·구 불일치나 검색 실패가 하나라도 있으면 기존 앱 JSON을 덮어쓰지 않습니다.
 
-생성물은 `src/infrastructure/public-data/generated/`에 저장됩니다.
+생성물은 `src/infrastructure/public-data/generated/`에 저장됩니다. 앱 스냅샷 JSON만 저장소에
+포함하고, 나머지 검수·캐시 산출물은 로컬에만 둡니다.
 
 - `public-rental-locations.json`: 앱이 읽는 schema v2 스냅샷
 - `public-rental-locations.csv`: 위치·주택·공급행 검수 자료
 - `public-rental-coordinate-cache.json`: 서버 수집용 좌표 캐시
 - `collection-report.json`: 원천별 수집·중복·제외·경고·오류 보고서
+- `public-rental-api-failures.json`: 공공데이터 API 요청 실패의 시·군·페이지 검수 목록
+- `public-rental-recruitment-failures.json`: 자동 연결하지 못한 LH 모집공고의 수기 검수 목록
+- `public-rental-coordinate-failures.json`: 좌표를 확인하지 못한 LH 단지의 수기 검수 목록
 
 일부 매입임대 원문은 건물번호 없이 숫자가 포함된 도로명까지만 제공합니다. Kakao가
 반환한 도로 중심 좌표를 사용하되, 해당 위치는 보고서의
 `ROAD_LEVEL_ADDRESS_PRECISION` 및 `roadLevelWarnings`에 별도로 남깁니다.
 
-## API 검수 수집
+## 경기도 API 수집
+
+경기도 전체 앱 스냅샷은 마이홈포털의 단지정보 API와 모집공고 API를 함께 사용합니다.
+두 API 모두 공공데이터포털에서 활용신청한 서버 전용 일반인증키가 필요합니다.
+
+- [공공임대주택 단지정보 API](https://www.data.go.kr/data/15110581/openapi.do)
+- [공공주택 모집공고 API](https://www.data.go.kr/data/15108420/openapi.do)
+
+```dotenv
+PUBLIC_DATA_PORTAL_SERVICE_KEY=공공데이터포털_일반인증키
+KAKAO_REST_API_KEY=카카오_REST_API_키
+```
+
+```bash
+pnpm collect:public-rentals:gyeonggi
+```
+
+수집기는 다음을 모두 확인한 뒤에만 앱 스냅샷을 교체합니다.
+
+1. 경기도 42개 시·군·구 API 요청을 모두 시도하고, 실패한 시·군·페이지는 `public-rental-api-failures.json`에 남긴다. 성공한 응답은 계속 수집한다.
+2. LH 단지만 남기고 `hsmpSn`으로 단지를 묶으며, 완전히 같은 공급 조건 행은 제거한다.
+3. 모집공고 API에서 LH·진행 중 공고만 남기고 단지 식별자로 연결한다. 식별자가 없을 때만 단지명 정확 일치를 사용한다.
+4. 공고 ID·상세 링크·단지 참조가 없거나, 연결되지 않거나, 여러 단지와 충돌한 LH 진행 중 공고는 `public-rental-recruitment-failures.json`에 사유와 식별정보를 남기고 앱 스냅샷에서는 제외한다.
+5. Kakao 좌표 변환에 실패한 단지는 `public-rental-coordinate-failures.json`에 사유와 단지 정보를 남기고 앱 스냅샷에서는 제외한다. 좌표가 확인된 단지와 정상적으로 연결된 공고는 계속 반영한다.
+
+개별 API 요청·공고 정규화·공고 연결·좌표 변환 오류는 각각 검수 목록으로 남기고 성공한
+데이터를 게시합니다. 단지 데이터가 없거나 좌표가 확인된 단지가 하나도 없을 때만 기존 앱
+스냅샷을 유지합니다.
+
+## API 검수 수집 (기존 성남 검수 경로)
 
 공공데이터포털 API 수집기는 앱 스냅샷과 분리해 보존합니다. 이 명령은
 `generated/api-review/`만 갱신합니다.
@@ -95,26 +131,28 @@ pnpm collect:public-rentals:api
 - 첫 화면과 필터 변경 시 결과 전체를 bounds로 맞춤
 - 6개 임대유형 색상·한글 약자 핀과 복합유형 분할색 핀
 - 2개 이상 위치의 클러스터와 클러스터 bounds 확대
-- 도시 단일 선택, 공급유형 다중 선택, 단지명·주소 검색
+- 시·군 단일 선택, 공급유형 다중 선택, 단지명·주소 검색
 - 지도 이동 후 사용자가 누를 때만 적용하는 `이 지도 영역에서 보기`
 - 목록·핀 선택 동기화와 공급유형별 세대수·면적·공식 출처 상세
+- 모집 중 공고 배지와 마이홈포털 공고 상세 링크
 - 데스크톱 384px 패널과 모바일 120px/56dvh 하단 시트
 - 색상 외 한글 약자·범례·텍스트·`aria-live` 안내
 
 ## 검증 명령
 
-| 명령어                            | 역할                                   |
-| --------------------------------- | -------------------------------------- |
-| `pnpm dev`                        | 개발 서버 실행                         |
-| `pnpm build`                      | 프로덕션 빌드                          |
-| `pnpm collect:public-rentals`     | CSV 스냅샷·CSV·캐시·보고서 생성        |
-| `pnpm collect:public-rentals:api` | API 검수 산출물을 별도 생성            |
-| `pnpm lint`                       | ESLint 검사                            |
-| `pnpm format:check`               | Prettier 검사                          |
-| `pnpm typecheck`                  | TypeScript strict 타입 검사            |
-| `pnpm test`                       | Vitest 단위·통합 테스트                |
-| `pnpm test:e2e`                   | Playwright 데스크톱·모바일 흐름 검증   |
-| `pnpm verify`                     | lint, 타입, 단위 테스트, 프로덕션 빌드 |
+| 명령어                                 | 역할                                   |
+| -------------------------------------- | -------------------------------------- |
+| `pnpm dev`                             | 개발 서버 실행                         |
+| `pnpm build`                           | 프로덕션 빌드                          |
+| `pnpm collect:public-rentals`          | CSV 스냅샷·CSV·캐시·보고서 생성        |
+| `pnpm collect:public-rentals:gyeonggi` | 경기도 API 스냅샷·모집공고·좌표 생성   |
+| `pnpm collect:public-rentals:api`      | API 검수 산출물을 별도 생성            |
+| `pnpm lint`                            | ESLint 검사                            |
+| `pnpm format:check`                    | Prettier 검사                          |
+| `pnpm typecheck`                       | TypeScript strict 타입 검사            |
+| `pnpm test`                            | Vitest 단위·통합 테스트                |
+| `pnpm test:e2e`                        | Playwright 데스크톱·모바일 흐름 검증   |
+| `pnpm verify`                          | lint, 타입, 단위 테스트, 프로덕션 빌드 |
 
 Playwright를 처음 실행하는 환경에서는 Chromium을 설치합니다.
 

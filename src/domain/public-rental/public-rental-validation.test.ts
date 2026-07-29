@@ -30,6 +30,7 @@ describe("공공임대 배포 검증 실패", () => {
   test("중복된 위치 식별자를 보고한다", testDuplicateIdentifier);
   test("필수 정보와 범위 위반을 모두 보고한다", testInvalidLocation);
   test("출처가 하나도 없는 위치를 보고한다", testMissingSource);
+  test("잘못된 모집공고 링크를 보고한다", testInvalidRecruitmentNotice);
 });
 
 function testValidLocations() {
@@ -69,13 +70,25 @@ function testMissingSource() {
   expect(issueCodes(issues)).toContain("MISSING_SOURCE");
 }
 
+function testInvalidRecruitmentNotice() {
+  const location = {
+    ...createDandaeHappyHousingLocation(),
+    recruitmentNotices: [
+      { announcedAt: "2026-07-29", id: "notice-1", title: "모집공고", url: "invalid-url" },
+    ],
+  };
+  const issues = validatePublicRentalLocations([location]);
+
+  expect(issueCodes(issues)).toContain("INVALID_RECRUITMENT_NOTICE");
+}
+
 function createInvalidLocation(): PublicRentalLocation {
   return {
     ...createDandaeHappyHousingLocation(),
     id: " ",
     provider: "GH" as PublicRentalProvider,
     name: "다솜마을",
-    roadAddress: "경기도 수원시 영통구 광교로 1",
+    roadAddress: "서울특별시 종로구 세종대로 1",
     coordinate: { latitude: 91, longitude: 181, source: "SEONGNAM_PUBLIC_WIFI" },
     legalCategories: [],
     sourceRecords: [createInvalidSourceRecord()],

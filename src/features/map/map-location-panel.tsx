@@ -1,6 +1,10 @@
 import type { ChangeEvent } from "react";
 
-import type { PublicRentalLegalCategory, PublicRentalLocation } from "@/domain/public-rental";
+import type {
+  PublicRentalLegalCategory,
+  PublicRentalLocation,
+  PublicRentalMunicipality,
+} from "@/domain/public-rental";
 
 import { MapLocationDetail } from "./map-location-detail";
 import {
@@ -14,6 +18,7 @@ type LocationSelectionHandler = (locationId: string) => void;
 
 export type MapLocationPanelProperties = Readonly<{
   availableCategories: readonly PublicRentalLegalCategory[];
+  availableMunicipalities: readonly PublicRentalMunicipality[];
   categories: readonly PublicRentalLegalCategory[];
   expanded: boolean;
   generatedAt?: string;
@@ -54,7 +59,7 @@ function PanelHeader(properties: MapLocationPanelProperties) {
 function PanelTitle({ count }: Readonly<{ count: number }>) {
   return (
     <>
-      <p className="text-xs font-semibold tracking-wide text-emerald-700">LH · 성남시와 용인시</p>
+      <p className="text-xs font-semibold tracking-wide text-emerald-700">LH · 경기도</p>
       <div className="mt-1 flex items-baseline justify-between gap-3 pr-10 md:pr-0">
         <h1 className="text-lg font-bold text-slate-950">임대주택 위치</h1>
         <p className="text-sm font-medium text-slate-600">총 {count}곳</p>
@@ -101,8 +106,12 @@ function MapFilters(properties: MapLocationPanelProperties) {
 function MunicipalityFilterControl(properties: MapLocationPanelProperties) {
   return (
     <div>
-      <p className="text-xs font-semibold text-slate-600">도시</p>
-      <div aria-label="도시 선택" className="mt-2 grid grid-cols-3 gap-1" role="radiogroup">
+      <p className="text-xs font-semibold text-slate-600">시·군</p>
+      <div
+        aria-label="시·군 선택"
+        className="mt-2 grid max-h-40 grid-cols-3 gap-1 overflow-y-auto pr-1"
+        role="radiogroup"
+      >
         {createMunicipalityOptions(properties)}
       </div>
     </div>
@@ -110,7 +119,10 @@ function MunicipalityFilterControl(properties: MapLocationPanelProperties) {
 }
 
 function createMunicipalityOptions(properties: MapLocationPanelProperties) {
-  const municipalities: readonly MunicipalityFilter[] = ["ALL", "SEONGNAM", "YONGIN"];
+  const municipalities: readonly MunicipalityFilter[] = [
+    "ALL",
+    ...properties.availableMunicipalities,
+  ];
   return municipalities.map((municipality) => (
     <MunicipalityOption
       key={municipality}
@@ -262,9 +274,15 @@ function LocationListItemContent({ location }: Readonly<{ location: PublicRental
       <span className="mt-1 block text-xs font-medium text-emerald-700">
         {createLegalCategoryText(location.legalCategories)}
       </span>
+      <RecruitmentBadge location={location} />
       <span className="mt-1 block text-xs leading-5 text-slate-600">{location.roadAddress}</span>
     </>
   );
+}
+
+function RecruitmentBadge({ location }: Readonly<{ location: PublicRentalLocation }>) {
+  if (!location.recruitmentNotices || location.recruitmentNotices.length === 0) return null;
+  return <span className="mt-1 inline-block text-xs font-semibold text-amber-700">모집 중</span>;
 }
 
 function SnapshotNotice({

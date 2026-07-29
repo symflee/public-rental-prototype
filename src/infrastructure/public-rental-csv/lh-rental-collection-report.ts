@@ -1,4 +1,5 @@
 import type { PublicRentalLocation } from "@/domain/public-rental";
+import { createGyeonggiMunicipalities } from "@/domain/public-rental/gyeonggi-geography";
 import type {
   LhRentalNormalizationIssue,
   LhRentalNormalizationIssueCode,
@@ -108,11 +109,24 @@ function countIssueCodes(issues: readonly LhRentalNormalizationIssue[]) {
 }
 
 function countMunicipalities(locations: readonly PublicRentalLocation[]) {
-  const counts = { SEONGNAM: 0, YONGIN: 0 };
-  locations.forEach((location) => {
-    counts[location.municipality] += 1;
-  });
+  const counts = createMunicipalityCounts();
+  locations.forEach((location) => incrementMunicipalityCount(counts, location));
   return counts;
+}
+
+function createMunicipalityCounts() {
+  return Object.fromEntries(createGyeonggiMunicipalities().map(createMunicipalityCount));
+}
+
+function createMunicipalityCount(municipality: PublicRentalLocation["municipality"]) {
+  return [municipality, 0] as const;
+}
+
+function incrementMunicipalityCount(
+  counts: Record<string, number>,
+  location: PublicRentalLocation,
+) {
+  counts[location.municipality] = (counts[location.municipality] ?? 0) + 1;
 }
 
 function incrementCount<Key>(counts: Map<Key, number>, key: Key) {

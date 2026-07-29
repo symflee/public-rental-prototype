@@ -1,6 +1,7 @@
 import type {
   PublicRentalLegalCategory,
   PublicRentalLocation,
+  PublicRentalRecruitmentNotice,
   PublicRentalSourceRecord,
   RentalOffering,
 } from "@/domain/public-rental";
@@ -48,6 +49,7 @@ function LocationDetail({ location }: Readonly<{ location: PublicRentalLocation 
       <LocationFacts location={location} />
       <CategorySummaries location={location} />
       <PropertyNames location={location} />
+      <RecruitmentNoticeLinks notices={location.recruitmentNotices ?? []} />
       <SourceLinks sources={location.sourceRecords} />
     </section>
   );
@@ -127,6 +129,40 @@ function PropertyNames({ location }: Readonly<{ location: PublicRentalLocation }
       <p className="mt-1 text-xs leading-5 text-slate-700">{properties.map(readName).join(", ")}</p>
     </div>
   );
+}
+
+function RecruitmentNoticeLinks({
+  notices,
+}: Readonly<{ notices: readonly PublicRentalRecruitmentNotice[] }>) {
+  if (notices.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h3 className="text-xs font-semibold text-slate-500">모집 중 공고</h3>
+      <ul className="mt-2 space-y-2">{notices.map(RecruitmentNoticeLink)}</ul>
+    </div>
+  );
+}
+
+function RecruitmentNoticeLink(notice: PublicRentalRecruitmentNotice) {
+  return (
+    <li key={notice.id}>
+      <a
+        aria-label={notice.title}
+        className="block rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 underline underline-offset-2"
+        href={notice.url}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {notice.title}
+        <RecruitmentNoticeDate announcedAt={notice.announcedAt} />
+      </a>
+    </li>
+  );
+}
+
+function RecruitmentNoticeDate({ announcedAt }: Readonly<{ announcedAt: string | null }>) {
+  if (!announcedAt) return null;
+  return <span className="mt-1 block font-normal">공고일 {announcedAt}</span>;
 }
 
 function SourceLinks({ sources }: Readonly<{ sources: readonly PublicRentalSourceRecord[] }>) {

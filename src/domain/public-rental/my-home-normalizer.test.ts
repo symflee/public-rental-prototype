@@ -20,10 +20,13 @@ const BASE_RECORD: MyHomeRawRecord = {
 
 describe("normalizeMyHomeRecords 단지 병합", () => {
   test("같은 단지의 주택형을 하나의 위치와 여러 공급조건으로 묶는다", testGrouping);
+  test("완전히 같은 공급 조건 행은 한 번만 보존한다", testExactDuplicate);
+  test("보증금이 다른 공급 조건은 각각 보존한다", testDifferentRentalCondition);
 });
 
 describe("normalizeMyHomeRecords 포함 규칙", () => {
   test("구체적인 주소가 있는 매입임대 건물을 별도 위치 유형으로 분류한다", testPurchase);
+  test("경기도 다른 시군구의 위치를 올바른 도시와 구로 분류한다", testGyeonggiGeography);
 });
 
 describe("normalizeMyHomeRecords 제외 규칙", () => {
@@ -41,6 +44,21 @@ function testGrouping() {
   expect(locations.values[0]?.offerings).toHaveLength(2);
 }
 
+function testExactDuplicate() {
+  const record = createRecord();
+  const locations = normalizeMyHomeRecords([record, record]);
+
+  expect(locations.values[0]?.offerings).toHaveLength(1);
+}
+
+function testDifferentRentalCondition() {
+  const first = createRecord({ bassRentGtn: "12,000,000" });
+  const second = createRecord({ bassRentGtn: "15,000,000" });
+  const locations = normalizeMyHomeRecords([first, second]);
+
+  expect(locations.values[0]?.offerings).toHaveLength(2);
+}
+
 function testPurchase() {
   const record = createRecord({
     hsmpSn: "purchase-1",
@@ -53,6 +71,16 @@ function testPurchase() {
     kind: "PURCHASE_RENTAL_BUILDING",
     legalCategories: ["PURCHASE_RENTAL"],
   });
+}
+
+function testGyeonggiGeography() {
+  const record = createRecord({
+    hsmpSn: "yongin-1",
+    rnAdres: "경기도 용인시 수지구 포은대로 467",
+  });
+  const locations = normalizeMyHomeRecords([record]);
+
+  expect(locations.values[0]).toMatchObject({ district: "수지구", municipality: "YONGIN" });
 }
 
 function testExclusions() {

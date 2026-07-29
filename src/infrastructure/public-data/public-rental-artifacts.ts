@@ -21,6 +21,10 @@ const CSV_HEADERS = [
   "longitude",
   "householdCount",
   "completionDate",
+  "recruitmentNoticeIds",
+  "recruitmentNoticeTitles",
+  "recruitmentNoticeUrls",
+  "recruitmentNoticeDates",
   "propertySourceId",
   "propertyName",
   "propertyKind",
@@ -114,7 +118,23 @@ function createLocationIdentityCells(location: PublicRentalLocation) {
     serializeNumber(location.coordinate?.longitude),
     serializeNumber(location.householdCount),
     location.completionDate ?? "",
+    ...createRecruitmentNoticeCells(location),
   ];
+}
+
+function createRecruitmentNoticeCells(location: PublicRentalLocation) {
+  const notices = location.recruitmentNotices ?? [];
+  return [
+    notices.map((notice) => notice.id).join("|"),
+    notices.map((notice) => notice.title).join("|"),
+    notices.map((notice) => notice.url).join("|"),
+    notices.flatMap(readNoticeDate).join("|"),
+  ];
+}
+
+function readNoticeDate(notice: NonNullable<PublicRentalLocation["recruitmentNotices"]>[number]) {
+  if (!notice.announcedAt) return [];
+  return [notice.announcedAt];
 }
 
 function createPropertyCells(property: PublicRentalProperty | undefined) {

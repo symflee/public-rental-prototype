@@ -4,6 +4,7 @@ import type { PublicRentalLocation } from "@/domain/public-rental";
 
 import {
   createAvailableCategories,
+  createAvailableMunicipalities,
   filterMapLocations,
   toggleCategory,
   type MapLocationFilter,
@@ -79,6 +80,22 @@ test("데이터에 실제 존재하는 공급유형만 정해진 표시 순서�
   ]);
 });
 
+test("데이터에 있는 경기도 시군만 표준 순서로 도시 필터에 제공한다", () => {
+  const yangpyeong = createLocation(
+    "yangpyeong-public",
+    "YANGPYEONG",
+    "양평 공공임대",
+    "경기도 양평군 양평읍 시민로 1",
+    ["PUBLIC_RENTAL"],
+  );
+
+  expect(createAvailableMunicipalities([...LOCATIONS, yangpyeong])).toEqual([
+    "SEONGNAM",
+    "YONGIN",
+    "YANGPYEONG",
+  ]);
+});
+
 test("공급유형 선택은 기존 순서를 유지하며 추가하고 다시 누르면 제거한다", () => {
   const selected = toggleCategory(["NATIONAL_RENTAL"], "HAPPY_HOUSING");
   const removed = toggleCategory(selected, "NATIONAL_RENTAL");
@@ -89,7 +106,7 @@ test("공급유형 선택은 기존 순서를 유지하며 추가하고 다시 �
 
 function createLocation(
   id: string,
-  municipality: "SEONGNAM" | "YONGIN",
+  municipality: PublicRentalLocation["municipality"],
   name: string,
   roadAddress: string,
   legalCategories: PublicRentalLocation["legalCategories"],

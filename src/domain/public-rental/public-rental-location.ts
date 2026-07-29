@@ -1,10 +1,12 @@
+import type { GyeonggiDistrict, GyeonggiMunicipality } from "./gyeonggi-geography";
+
 export type PublicRentalProvider = "LH" | "SEONGNAM_CITY";
 
 export type PublicRentalLocationKind = "CONSTRUCTION_RENTAL_COMPLEX" | "PURCHASE_RENTAL_BUILDING";
 
-export type PublicRentalMunicipality = "SEONGNAM" | "YONGIN";
+export type PublicRentalMunicipality = GyeonggiMunicipality;
 
-export type PublicRentalDistrict = "수정구" | "중원구" | "분당구" | "처인구" | "기흥구" | "수지구";
+export type PublicRentalDistrict = GyeonggiDistrict;
 
 export type PublicRentalLegalCategory =
   | "NATIONAL_RENTAL"
@@ -50,6 +52,13 @@ export type RentalOffering = Readonly<{
   monthlyRentWon: number | null;
 }>;
 
+export type PublicRentalRecruitmentNotice = Readonly<{
+  announcedAt: string | null;
+  id: string;
+  title: string;
+  url: string;
+}>;
+
 export type PublicRentalProperty = Readonly<{
   sourceId: string;
   name: string;
@@ -76,6 +85,7 @@ export type PublicRentalLocation = Readonly<{
   householdCount: number | null;
   completionDate: string | null;
   properties: readonly PublicRentalProperty[];
+  recruitmentNotices?: readonly PublicRentalRecruitmentNotice[];
   offerings: readonly RentalOffering[];
   sourceRecords: readonly PublicRentalSourceRecord[];
 }>;

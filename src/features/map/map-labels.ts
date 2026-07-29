@@ -1,4 +1,9 @@
-import type { PublicRentalLegalCategory, PublicRentalProvider } from "@/domain/public-rental";
+import {
+  readGyeonggiMunicipalityLabel,
+  type PublicRentalLegalCategory,
+  type PublicRentalMunicipality,
+  type PublicRentalProvider,
+} from "@/domain/public-rental";
 
 export type CategoryPresentation = Readonly<{
   abbreviation: string;
@@ -36,10 +41,9 @@ export function readProviderLabel(provider: PublicRentalProvider) {
   return PROVIDER_LABELS[provider];
 }
 
-export function readMunicipalityLabel(municipality: string) {
-  if (municipality === "SEONGNAM") return "성남";
-  if (municipality === "YONGIN") return "용인";
-  return "전체";
+export function readMunicipalityLabel(municipality: "ALL" | PublicRentalMunicipality) {
+  if (municipality === "ALL") return "전체";
+  return readGyeonggiMunicipalityLabel(municipality);
 }
 
 function createCategory(

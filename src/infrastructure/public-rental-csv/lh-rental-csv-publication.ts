@@ -1,6 +1,13 @@
-import type { PublicRentalLocation } from "@/domain/public-rental";
+import {
+  readGyeonggiMunicipalityAddressName,
+  type PublicRentalLocation,
+} from "@/domain/public-rental";
 
-import type { CoordinateResolutionRequest, RentalCoordinate } from "./kakao-coordinate-resolver";
+import type {
+  CoordinateResolutionFailure,
+  CoordinateResolutionRequest,
+  RentalCoordinate,
+} from "./kakao-coordinate-resolver";
 
 const EXPECTED_LOCATION_COUNT = 269;
 const EXPECTED_SEONGNAM_COUNT = 87;
@@ -11,11 +18,34 @@ export type RoadLevelLocationWarning = Readonly<{
   roadAddress: string;
 }>;
 
+export type CoordinateReviewFailure = CoordinateResolutionFailure &
+  Readonly<{
+    district: PublicRentalLocation["district"] | null;
+    locationName: string | null;
+    municipality: PublicRentalLocation["municipality"] | null;
+  }>;
+
 export function applyResolvedCoordinates(
   locations: readonly PublicRentalLocation[],
   coordinates: Readonly<Record<string, RentalCoordinate>>,
 ) {
   return locations.map((location) => applyCoordinate(location, coordinates[location.id]));
+}
+
+export function selectResolvedLocations(
+  locations: readonly PublicRentalLocation[],
+  coordinates: Readonly<Record<string, RentalCoordinate>>,
+) {
+  return locations.filter((location) => coordinates[location.id] !== undefined);
+}
+
+export function createCoordinateReviewFailures(
+  locations: readonly PublicRentalLocation[],
+  failures: readonly CoordinateResolutionFailure[],
+) {
+  return Object.freeze(
+    failures.map((failure) => createCoordinateReviewFailure(locations, failure)),
+  );
 }
 
 export function createCoordinateRequests(
@@ -49,6 +79,19 @@ function applyCoordinate(
   };
 }
 
+function createCoordinateReviewFailure(
+  locations: readonly PublicRentalLocation[],
+  failure: CoordinateResolutionFailure,
+): CoordinateReviewFailure {
+  const location = locations.find((candidate) => candidate.id === failure.locationId);
+  return {
+    ...failure,
+    district: location?.district ?? null,
+    locationName: location?.name ?? null,
+    municipality: location?.municipality ?? null,
+  };
+}
+
 function createCoordinateRequest(location: PublicRentalLocation): CoordinateResolutionRequest {
   return {
     addressAliases: location.addressAliases,
@@ -60,8 +103,7 @@ function createCoordinateRequest(location: PublicRentalLocation): CoordinateReso
 }
 
 function readMunicipalityName(location: PublicRentalLocation) {
-  if (location.municipality === "SEONGNAM") return "성남시";
-  return "용인시";
+  return readGyeonggiMunicipalityAddressName(location.municipality);
 }
 
 function assertLocationCount(

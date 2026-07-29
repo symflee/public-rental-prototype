@@ -47,6 +47,24 @@ test("공급조건별 행과 출처 기준일을 보존한다", () => {
   expect(csv).toContain('"2026-07-28"');
 });
 
+test("검수 CSV에 연결된 모집공고를 보존한다", () => {
+  const location = {
+    ...createDandaeHappyHousingLocation(),
+    recruitmentNotices: [
+      {
+        announcedAt: "2026-07-29",
+        id: "notice-1",
+        title: "단대동 행복주택 모집공고",
+        url: "https://www.myhome.go.kr/notices/notice-1",
+      },
+    ],
+  };
+  const csv = createPublicRentalReviewCsv([location]);
+
+  expect(csv).toContain('"recruitmentNoticeUrls"');
+  expect(csv).toContain('"https://www.myhome.go.kr/notices/notice-1"');
+});
+
 function expectSnapshotFailureToIdentifyLocation(location: PublicRentalLocation) {
   const createSnapshot = () => createPublicRentalSnapshot("2026-07-28T00:00:00.000Z", [location]);
 

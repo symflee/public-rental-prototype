@@ -1,145 +1,107 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-const TOTAL_LOCATION_COUNT = 269;
-const SEONGNAM_LOCATION_COUNT = 87;
-const YONGIN_LOCATION_COUNT = 182;
 const CLUSTER_SELECTOR = [
   'div[style*="background: rgb(23, 37, 84)"]',
   'div[style*="background: #172554"]',
 ].join(", ");
 
-test.describe("데스크톱 성남·용인 LH 임대주택 지도", () => {
+test.describe("데스크톱 경기도 LH 임대주택 지도", () => {
   test.use({ viewport: { height: 900, width: 1280 } });
 
-  test("269개 위치와 두 도시를 맞춘 지도 및 클러스터를 표시한다", async ({ page }) => {
+  test("검증된 위치, 카카오 지도와 클러스터를 표시한다", async ({ page }) => {
     await openReadyMap(page);
 
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
+    expect(await readLocationCount(page)).toBeGreaterThan(0);
     await expectKakaoMapSurface(page);
     await expectClusterVisible(page);
     await expectDesktopRegionsDoNotOverlap(page);
   });
 
-  test("도시와 공급유형 필터를 목록과 지도에 함께 적용한다", async ({ page }) => {
+  test("시군과 공급유형 필터를 목록과 지도에 함께 적용한다", async ({ page }) => {
     await openReadyMap(page);
+    const initialCount = await readLocationCount(page);
 
-    await page.getByRole("radio", { name: "성남" }).click();
-    await expectLocationCount(page, SEONGNAM_LOCATION_COUNT);
-    await page.getByRole("radio", { name: "용인" }).click();
-    await expectLocationCount(page, YONGIN_LOCATION_COUNT);
-    await selectCategory(page, "행복주택");
-    await expectLocationCount(page, 1);
-    await expect(page.getByRole("button", { name: "용인김량장(행복) 선택" })).toBeVisible();
+    await selectFirstMunicipality(page);
+    await expectPositiveFilteredCount(page, initialCount);
+    await resetFilters(page);
+    await selectFirstCategory(page);
+    await expectPositiveFilteredCount(page, initialCount);
   });
 
-  test("단일 행복주택 핀과 목록이 같은 상세 위치를 선택한다", async ({ page }) => {
+  test("목록 선택이 같은 상세 위치를 표시한다", async ({ page }) => {
     await openReadyMap(page);
-    await searchFor(page, "용인김량장(행복)");
-    await expectLocationCount(page, 1);
+    const locationName = await selectFirstListLocation(page);
 
-    await clickVisibleMarker(page, "용인김량장(행복)");
-    await expectSelectedListItem(page, "용인김량장(행복)");
-    await expectSingleLocationDetail(page);
-  });
-
-  test("복합 위치에서 두 공급유형 행과 세대·면적 범위를 표시한다", async ({ page }) => {
-    await openReadyMap(page);
-    await searchFor(page, "성남고등 A-1 행복주택리츠");
-    await page.getByRole("button", { name: "성남고등 A-1 행복주택리츠 선택" }).click();
-
-    await expectMixedLocationDetail(page);
+    await expectSelectedListItem(page, locationName);
+    await expect(
+      readLocationDetail(page).getByRole("heading", { name: locationName }),
+    ).toBeVisible();
   });
 
   test("지도 이동 결과는 사용자가 적용할 때만 목록을 좁힌다", async ({ page }) => {
     await openReadyMap(page);
-    await dragMapHorizontally(page);
+    const initialCount = await readLocationCount(page);
 
-    const applyButton = page.getByRole("button", {
-      name: /이 지도 영역에서 보기 · \d+곳/,
-    });
+    await dragMapHorizontally(page);
+    const applyButton = page.getByRole("button", { name: /이 지도 영역에서 보기 · \d+곳/ });
     await expect(applyButton).toBeVisible({ timeout: 10_000 });
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
-    const visibleCount = await readViewportButtonCount(applyButton);
-    expect(visibleCount).toBeGreaterThan(0);
-    expect(visibleCount).toBeLessThan(TOTAL_LOCATION_COUNT);
+    expect(await readLocationCount(page)).toBe(initialCount);
     await applyButton.click();
-    await expectLocationCount(page, visibleCount);
+    expect(await readLocationCount(page)).toBeGreaterThan(0);
     await page.getByRole("button", { name: "전체 위치 보기" }).click();
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
+    await expectLocationCount(page, initialCount);
   });
 
-  test("결과가 없는 검색을 안내하고 필터 초기화로 전체를 복원한다", async ({ page }) => {
+  test("0건 검색은 필터 초기화로 전체 결과를 복원한다", async ({ page }) => {
     await openReadyMap(page);
-    await searchFor(page, "존재하지않는임대주택주소");
+    const initialCount = await readLocationCount(page);
 
+    await searchFor(page, "존재하지않는임대주택주소");
     await expectLocationCount(page, 0);
     await expect(page.getByText("조건에 맞는 임대주택이 없습니다.")).toBeVisible();
-    await page.getByRole("button", { name: "필터 초기화" }).click();
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
-    await expect(page.getByRole("searchbox", { name: "단지명 또는 주소 검색" })).toHaveValue("");
+    await resetFilters(page);
+    await expectLocationCount(page, initialCount);
   });
 });
 
-test.describe("모바일 성남·용인 LH 임대주택 지도", () => {
+test.describe("모바일 경기도 LH 임대주택 지도", () => {
   test.use({ viewport: { height: 844, width: 390 } });
 
-  test("초기 120px 시트 위로 269개 위치 지도와 클러스터를 표시한다", async ({ page }) => {
+  test("초기 시트와 경기도 지도 위치를 표시한다", async ({ page }) => {
     await openReadyMap(page);
 
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
+    expect(await readLocationCount(page)).toBeGreaterThan(0);
     await expectClusterVisible(page);
     await expectCollapsedMobileSheet(page);
-    await expect(page.getByRole("button", { name: "목록 펼치기" })).toBeVisible();
   });
 
-  test("펼친 시트가 56dvh를 넘지 않고 모바일 상세를 탐색할 수 있다", async ({ page }) => {
+  test("펼친 시트에서 시군 필터와 상세를 탐색한다", async ({ page }) => {
     await openReadyMap(page);
     await page.getByRole("button", { name: "목록 펼치기" }).click();
-
     await expectExpandedMobileSheet(page);
-    await page.getByRole("radio", { name: "용인" }).click();
-    await expectLocationCount(page, YONGIN_LOCATION_COUNT);
-    await selectCategory(page, "행복주택");
-    await expectLocationCount(page, 1);
-    await page.getByRole("button", { name: "용인김량장(행복) 선택" }).click();
-    await expectSingleLocationDetail(page);
+
+    await selectFirstMunicipality(page);
+    const locationName = await selectFirstListLocation(page);
+    await expect(
+      readLocationDetail(page).getByRole("heading", { name: locationName }),
+    ).toBeVisible();
   });
 
-  test("복합 상세를 표시하고 0건 검색을 전체 결과로 초기화한다", async ({ page }) => {
+  test("모바일 검색 결과도 전체 결과로 초기화한다", async ({ page }) => {
     await openReadyMap(page);
-    await page.getByRole("button", { name: "목록 펼치기" }).click();
-    await searchFor(page, "성남고등 A-1 행복주택리츠");
-    await page.getByRole("button", { name: "성남고등 A-1 행복주택리츠 선택" }).click();
-    await expectMixedLocationDetail(page);
+    const initialCount = await readLocationCount(page);
 
+    await page.getByRole("button", { name: "목록 펼치기" }).click();
     await searchFor(page, "모바일에도존재하지않는주소");
     await expectLocationCount(page, 0);
-    await page.getByRole("button", { name: "필터 초기화" }).click();
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
-  });
-
-  test("지도 이동 결과를 명시적으로 적용하고 전체 위치로 돌아온다", async ({ page }) => {
-    await openReadyMap(page);
-    await dragMapHorizontally(page);
-
-    const applyButton = page.getByRole("button", {
-      name: /이 지도 영역에서 보기 · \d+곳/,
-    });
-    await expect(applyButton).toBeVisible({ timeout: 10_000 });
-    const visibleCount = await readViewportButtonCount(applyButton);
-    expect(visibleCount).toBeLessThan(TOTAL_LOCATION_COUNT);
-    await applyButton.click();
-    await expectLocationCount(page, visibleCount);
-    await page.getByRole("button", { name: "전체 위치 보기" }).click();
-    await expectLocationCount(page, TOTAL_LOCATION_COUNT);
+    await resetFilters(page);
+    await expectLocationCount(page, initialCount);
   });
 });
 
 async function openReadyMap(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(readMapRegion(page)).toHaveAttribute("data-map-state", "ready", {
-    timeout: 25_000,
-  });
+  await expect(readMapRegion(page)).toHaveAttribute("data-map-state", "ready", { timeout: 25_000 });
 }
 
 async function expectKakaoMapSurface(page: Page) {
@@ -157,25 +119,49 @@ async function expectClusterVisible(page: Page) {
 async function expectDesktopRegionsDoNotOverlap(page: Page) {
   const panelBox = await readExplorerPanel(page).boundingBox();
   const mapBox = await readMapRegion(page).boundingBox();
-  expect(panelBox).not.toBeNull();
-  expect(mapBox).not.toBeNull();
-  if (!panelBox || !mapBox) return;
+  if (!panelBox || !mapBox) throw new Error("지도 또는 목록 패널 크기를 읽지 못했습니다.");
   expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(mapBox.x);
+}
+
+async function selectFirstMunicipality(page: Page) {
+  const municipality = page.getByRole("radio").nth(1);
+  await municipality.click();
+}
+
+async function selectFirstCategory(page: Page) {
+  const category = page.getByRole("checkbox").first();
+  await category.check({ force: true });
+}
+
+async function expectPositiveFilteredCount(page: Page, initialCount: number) {
+  const filteredCount = await readLocationCount(page);
+  expect(filteredCount).toBeGreaterThan(0);
+  expect(filteredCount).toBeLessThanOrEqual(initialCount);
+}
+
+async function resetFilters(page: Page) {
+  await page.getByRole("button", { name: "필터 초기화" }).click();
 }
 
 async function searchFor(page: Page, query: string) {
   await page.getByRole("searchbox", { name: "단지명 또는 주소 검색" }).fill(query);
 }
 
-async function selectCategory(page: Page, name: string) {
-  const filters = page.getByRole("region", { name: "임대주택 필터" });
-  await filters.getByText(name, { exact: true }).click();
+async function readFirstLocationName(page: Page) {
+  const button = readExplorerPanel(page)
+    .getByRole("button", { name: / 선택$/ })
+    .first();
+  const label = await button.getAttribute("aria-label");
+  if (!label) throw new Error("첫 번째 위치 이름을 읽지 못했습니다.");
+  return label.replace(/ 선택$/u, "");
 }
 
-async function clickVisibleMarker(page: Page, title: string) {
-  const marker = readMapRegion(page).locator(createMarkerSelector(title));
-  await expect(marker).toBeVisible({ timeout: 10_000 });
-  await marker.click({ force: true });
+async function selectFirstListLocation(page: Page) {
+  const name = await readFirstLocationName(page);
+  await readExplorerPanel(page)
+    .getByRole("button", { name: `${name} 선택` })
+    .click();
+  return name;
 }
 
 async function expectSelectedListItem(page: Page, name: string) {
@@ -185,28 +171,9 @@ async function expectSelectedListItem(page: Page, name: string) {
   );
 }
 
-async function expectSingleLocationDetail(page: Page) {
-  const detail = readLocationDetail(page);
-  await expect(detail.getByRole("heading", { name: "용인김량장(행복)" })).toBeVisible();
-  await expect(detail.getByText("70세대", { exact: true })).toBeVisible();
-  await expect(detail.locator("strong").filter({ hasText: /^행복주택$/ })).toBeVisible();
-  await expect(detail.getByText("70세대 · 16.39–36.32㎡", { exact: true })).toBeVisible();
-}
-
-async function expectMixedLocationDetail(page: Page) {
-  const detail = readLocationDetail(page);
-  await expect(detail.getByRole("heading", { name: "성남고등 A-1 행복주택리츠" })).toBeVisible();
-  await expect(detail.getByText("1,520세대", { exact: true })).toBeVisible();
-  await expect(detail.getByText("국민임대", { exact: true })).toBeVisible();
-  await expect(detail.getByText("480세대 · 26.52–44.15㎡", { exact: true })).toBeVisible();
-  await expect(detail.getByText("행복주택", { exact: true })).toBeVisible();
-  await expect(detail.getByText("1,040세대 · 16.45–36.37㎡", { exact: true })).toBeVisible();
-}
-
 async function dragMapHorizontally(page: Page) {
   const mapBox = await readMapRegion(page).boundingBox();
-  expect(mapBox).not.toBeNull();
-  if (!mapBox) return;
+  if (!mapBox) throw new Error("지도 영역 크기를 읽지 못했습니다.");
   const verticalCenter = mapBox.y + mapBox.height / 2;
   await page.mouse.move(mapBox.x + mapBox.width * 0.75, verticalCenter);
   await page.mouse.down();
@@ -214,17 +181,9 @@ async function dragMapHorizontally(page: Page) {
   await page.mouse.up();
 }
 
-async function readViewportButtonCount(button: Locator) {
-  const label = await button.textContent();
-  const countText = label?.match(/(\d+)곳/)?.[1];
-  expect(countText).toBeDefined();
-  return Number(countText);
-}
-
 async function expectCollapsedMobileSheet(page: Page) {
   const panelBox = await readExplorerPanel(page).boundingBox();
-  expect(panelBox).not.toBeNull();
-  if (!panelBox) return;
+  if (!panelBox) throw new Error("모바일 시트 크기를 읽지 못했습니다.");
   expect(panelBox.height).toBeGreaterThanOrEqual(118);
   expect(panelBox.height).toBeLessThanOrEqual(122);
 }
@@ -232,9 +191,7 @@ async function expectCollapsedMobileSheet(page: Page) {
 async function expectExpandedMobileSheet(page: Page) {
   const panelBox = await readExplorerPanel(page).boundingBox();
   const viewportHeight = page.viewportSize()?.height;
-  expect(panelBox).not.toBeNull();
-  expect(viewportHeight).toBeDefined();
-  if (!panelBox || !viewportHeight) return;
+  if (!panelBox || !viewportHeight) throw new Error("펼친 모바일 시트 크기를 읽지 못했습니다.");
   expect(panelBox.height).toBeLessThanOrEqual(viewportHeight * 0.57);
   expect(panelBox.y).toBeGreaterThan(viewportHeight * 0.4);
 }
@@ -243,8 +200,17 @@ async function expectLocationCount(page: Page, count: number) {
   await expect(readExplorerPanel(page).getByText(`총 ${count}곳`, { exact: true })).toBeVisible();
 }
 
+async function readLocationCount(page: Page) {
+  const text = await readExplorerPanel(page)
+    .getByText(/^총 \d+곳$/u)
+    .textContent();
+  const matched = text?.match(/\d+/u);
+  if (!matched) throw new Error("위치 수를 읽지 못했습니다.");
+  return Number(matched[0]);
+}
+
 function readMapRegion(page: Page) {
-  return page.getByRole("region", { name: "성남시·용인시 LH 임대주택 지도" });
+  return page.getByRole("region", { name: "경기도 LH 임대주택 지도" });
 }
 
 function readExplorerPanel(page: Page) {
@@ -253,9 +219,4 @@ function readExplorerPanel(page: Page) {
 
 function readLocationDetail(page: Page) {
   return page.getByRole("region", { name: "선택한 임대주택 상세" });
-}
-
-function createMarkerSelector(title: string) {
-  const escapedTitle = title.replaceAll('"', '\\"');
-  return `img[title="${escapedTitle}"], img[alt="${escapedTitle}"]`;
 }

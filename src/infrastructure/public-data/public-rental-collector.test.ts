@@ -108,7 +108,7 @@ async function createFailedMyHomeCollection() {
   return {
     collectionIssues: [
       {
-        districtCode: "133" as const,
+        areaCode: "133",
         kind: "http-error" as const,
         message: "수집 실패",
         pageNumber: 1,

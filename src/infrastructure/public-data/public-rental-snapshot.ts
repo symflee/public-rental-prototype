@@ -1,4 +1,6 @@
 import {
+  createGyeonggiMunicipalities,
+  GYEONGGI_COLLECTION_AREAS,
   validatePublicRentalLocations,
   type PublicRentalCoordinate,
   type PublicRentalCoordinateSource,
@@ -9,6 +11,7 @@ import {
   type PublicRentalDistrict,
   type PublicRentalProperty,
   type PublicRentalProvider,
+  type PublicRentalRecruitmentNotice,
   type PublicRentalSource,
   type PublicRentalSourceRecord,
   type RentalOffering,
@@ -22,18 +25,10 @@ const LOCATION_KINDS = [
   "CONSTRUCTION_RENTAL_COMPLEX",
   "PURCHASE_RENTAL_BUILDING",
 ] as const satisfies readonly PublicRentalLocationKind[];
-const MUNICIPALITIES = [
-  "SEONGNAM",
-  "YONGIN",
-] as const satisfies readonly PublicRentalMunicipality[];
+const MUNICIPALITIES = createGyeonggiMunicipalities() satisfies readonly PublicRentalMunicipality[];
 const DISTRICTS = [
-  "수정구",
-  "중원구",
-  "분당구",
-  "처인구",
-  "기흥구",
-  "수지구",
-] as const satisfies readonly PublicRentalDistrict[];
+  ...new Set(GYEONGGI_COLLECTION_AREAS.map((area) => area.district)),
+] satisfies readonly PublicRentalDistrict[];
 const LEGAL_CATEGORIES = [
   "NATIONAL_RENTAL",
   "PERMANENT_RENTAL",
@@ -84,6 +79,7 @@ function isPublicRentalLocation(value: unknown): value is PublicRentalLocation {
   if (!hasLocationClassification(value)) return false;
   if (!hasLocationDetails(value)) return false;
   if (!isNullableCoordinate(value.coordinate)) return false;
+  if (!hasRecruitmentNotices(value)) return false;
   if (!isArrayOf(value.properties, isPublicRentalProperty)) return false;
   if (!isArrayOf(value.offerings, isRentalOffering)) return false;
   return isArrayOf(value.sourceRecords, isSourceRecord);
@@ -108,6 +104,29 @@ function hasLocationDetails(value: UnknownRecord) {
   if (!isNullableString(value.parcelNumber)) return false;
   if (!isNullableFiniteNumber(value.householdCount)) return false;
   return isNullableString(value.completionDate);
+}
+
+function hasRecruitmentNotices(value: UnknownRecord) {
+  if (value.recruitmentNotices === undefined) return true;
+  return isArrayOf(value.recruitmentNotices, isRecruitmentNotice);
+}
+
+function isRecruitmentNotice(value: unknown): value is PublicRentalRecruitmentNotice {
+  if (!isUnknownRecord(value)) return false;
+  if (!isNonEmptyString(value.id)) return false;
+  if (!isNonEmptyString(value.title)) return false;
+  if (!isNullableString(value.announcedAt)) return false;
+  return isValidHttpUrl(value.url);
+}
+
+function isValidHttpUrl(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function isNullableCoordinate(value: unknown): value is PublicRentalCoordinate | null {

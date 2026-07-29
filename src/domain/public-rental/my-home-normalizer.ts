@@ -7,9 +7,9 @@ import {
   type PublicRentalSourceRecord,
   type RentalOffering,
 } from "./public-rental-location";
+import { findGyeonggiAddressArea } from "./gyeonggi-geography";
 
 const MY_HOME_SOURCE_URL = "https://www.data.go.kr/data/15110581/openapi.do";
-const CONCRETE_SEONGNAM_ADDRESS = /성남시\s+(수정구|중원구|분당구)\s+\S+/;
 const PUBLIC_RENTAL_TERM = /(5|10|50)년\s*임대/;
 
 export type MyHomeRawRecord = Readonly<{
@@ -21,6 +21,7 @@ export type MyHomeRawRecord = Readonly<{
   competDe?: string;
   hshldCo?: string;
   suplyTyNm?: string;
+  houseTyNm?: string;
   styleNm?: string;
   suplyPrvuseAr?: string;
   suplyCmnuseAr?: string;
@@ -73,11 +74,12 @@ function createLocation(record: MyHomeRawRecord): PublicRentalLocation {
 }
 
 function createIdentity(record: MyHomeRawRecord) {
+  const area = readRequiredArea(record.rnAdres);
   return {
     id: requiredText(record.hsmpSn),
     provider: "LH" as const,
-    municipality: "SEONGNAM" as const,
-    district: readSeongnamDistrict(record.rnAdres),
+    municipality: area.municipality,
+    district: area.district,
     name: requiredText(record.hsmpNm),
   };
 }
@@ -97,12 +99,13 @@ function mergeLocation(
   record: MyHomeRawRecord,
 ): PublicRentalLocation {
   const legalCategory = requiredLegalCategory(record.suplyTyNm);
+  const offering = createOffering(record, legalCategory);
   return {
     ...location,
     legalCategories: appendLegalCategory(location.legalCategories, legalCategory),
     householdCount: maximumNumber(location.householdCount, parseNumber(record.hshldCo)),
-    properties: mergeProperty(location.properties, record, legalCategory),
-    offerings: Object.freeze([...location.offerings, createOffering(record, legalCategory)]),
+    properties: mergeProperty(location.properties, offering),
+    offerings: appendOffering(location.offerings, offering),
   };
 }
 
@@ -141,28 +144,28 @@ function createProperty(
   };
 }
 
-function mergeProperty(
-  properties: readonly PublicRentalProperty[],
-  record: MyHomeRawRecord,
-  category: PublicRentalLegalCategory,
-) {
+function mergeProperty(properties: readonly PublicRentalProperty[], offering: RentalOffering) {
   const property = properties[0];
   if (!property) return properties;
-  const offering = createOffering(record, category);
-  return Object.freeze([
-    { ...property, offerings: Object.freeze([...property.offerings, offering]) },
-  ]);
+  return Object.freeze([{ ...property, offerings: appendOffering(property.offerings, offering) }]);
 }
 
 function createOfferingSourceId(record: MyHomeRawRecord) {
-  const values = [record.hsmpSn, record.suplyTyNm, record.styleNm, record.suplyPrvuseAr];
+  const values = [
+    record.hsmpSn,
+    record.suplyTyNm,
+    record.styleNm,
+    record.suplyPrvuseAr,
+    record.bassRentGtn,
+    record.bassMtRntchrg,
+    record.hshldCo,
+  ];
   return values.map(requiredText).join(":");
 }
 
-function readSeongnamDistrict(address: string | undefined) {
-  if (address?.includes("수정구")) return "수정구" as const;
-  if (address?.includes("중원구")) return "중원구" as const;
-  return "분당구" as const;
+function appendOffering(offerings: readonly RentalOffering[], offering: RentalOffering) {
+  if (offerings.some((candidate) => candidate.sourceId === offering.sourceId)) return offerings;
+  return Object.freeze([...offerings, offering]);
 }
 
 function createSourceRecord(record: MyHomeRawRecord): PublicRentalSourceRecord {
@@ -177,7 +180,7 @@ function createSourceRecord(record: MyHomeRawRecord): PublicRentalSourceRecord {
 function isIncludedRecord(record: MyHomeRawRecord, asOfDate: string) {
   if (!isLhProvider(record.insttNm)) return false;
   if (!hasRequiredIdentity(record)) return false;
-  if (!isConcreteSeongnamAddress(record.rnAdres)) return false;
+  if (!isConcreteGyeonggiAddress(record.rnAdres)) return false;
   if (isExcludedName(record.hsmpNm)) return false;
   if (isExcludedRentalType(record.suplyTyNm)) return false;
   if (!createLegalCategory(record.suplyTyNm)) return false;
@@ -196,10 +199,25 @@ function hasRequiredIdentity(record: MyHomeRawRecord) {
   return Boolean(optionalText(record.hsmpSn) && optionalText(record.hsmpNm));
 }
 
-function isConcreteSeongnamAddress(address: string | undefined) {
+function isConcreteGyeonggiAddress(address: string | undefined) {
   const normalizedAddress = optionalText(address);
   if (!normalizedAddress) return false;
-  return CONCRETE_SEONGNAM_ADDRESS.test(normalizedAddress);
+  const area = findGyeonggiAddressArea(normalizedAddress);
+  if (!area) return false;
+  return hasAddressDetail(normalizedAddress, area.district);
+}
+
+function hasAddressDetail(address: string, district: string) {
+  const index = address.indexOf(district);
+  if (index < 0) return false;
+  const detail = address.slice(index + district.length).trim();
+  return detail.length > 0;
+}
+
+function readRequiredArea(address: string | undefined) {
+  const area = findGyeonggiAddressArea(requiredText(address));
+  if (area) return area;
+  throw new Error("경기도 시군구 주소가 필요합니다.");
 }
 
 function isExcludedName(name: string | undefined) {

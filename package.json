@@ -12,6 +12,7 @@
     "start": "next start",
     "collect:public-rentals": "node --env-file-if-exists=.env.local --import tsx scripts/collect-public-rentals-csv.ts",
     "collect:public-rentals:api": "node --env-file-if-exists=.env.local --import tsx scripts/collect-public-rentals-api.ts",
+    "collect:public-rentals:gyeonggi": "node --env-file-if-exists=.env.local --import tsx scripts/collect-gyeonggi-public-rentals.ts",
     "lint": "eslint .",
     "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",

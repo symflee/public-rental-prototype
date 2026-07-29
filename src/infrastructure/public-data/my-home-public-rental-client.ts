@@ -1,12 +1,14 @@
-import type { PublicDataFetch, PublicDataHttpResponse } from "./public-data-http";
+import { GYEONGGI_COLLECTION_AREAS } from "@/domain/public-rental/gyeonggi-geography";
 import type { MyHomeRawRecord } from "@/domain/public-rental";
+
+import type { PublicDataFetch, PublicDataHttpResponse } from "./public-data-http";
 
 export type { PublicDataHttpResponse } from "./public-data-http";
 export type { MyHomeRawRecord } from "@/domain/public-rental";
 
 const MY_HOME_ENDPOINT = "https://apis.data.go.kr/1613000/HWSPR04/rentalHouseGwList";
-const SEONGNAM_DISTRICT_CODES = ["131", "133", "135"] as const;
 const DEFAULT_PAGE_SIZE = 1_000;
+const GYEONGGI_AREA_CODES = GYEONGGI_COLLECTION_AREAS.map(readAreaCode);
 const MY_HOME_RAW_FIELDS = [
   "hsmpSn",
   "insttNm",
@@ -16,6 +18,7 @@ const MY_HOME_RAW_FIELDS = [
   "competDe",
   "hshldCo",
   "suplyTyNm",
+  "houseTyNm",
   "styleNm",
   "suplyPrvuseAr",
   "suplyCmnuseAr",
@@ -25,14 +28,30 @@ const MY_HOME_RAW_FIELDS = [
   "dataStdrDe",
 ] as const satisfies ReadonlyArray<keyof MyHomeRawRecord>;
 
-export type MyHomeDistrictCode = (typeof SEONGNAM_DISTRICT_CODES)[number];
 type MyHomeRawField = (typeof MY_HOME_RAW_FIELDS)[number];
+type UnknownRecord = Record<string, unknown>;
+type PageValue = Readonly<{ records: ReadonlyArray<MyHomeRawRecord>; totalCount: number }>;
+type PageFailure = Readonly<{
+  kind: MyHomeCollectionIssueKind;
+  message: string;
+  status?: number;
+  success: false;
+}>;
+type PageResult = Readonly<{ success: true; value: PageValue }> | PageFailure;
+type TransportResult<T> = Readonly<{ success: true; value: T }> | PageFailure;
+type CollectionContext = Readonly<{
+  areaCode: string;
+  collectionIssues: MyHomeCollectionIssue[];
+  configuration: MyHomeClientConfiguration;
+  pageSize: number;
+  records: MyHomeRawRecord[];
+}>;
 
 export type MyHomeCollectionIssueKind =
   "api-error" | "http-error" | "malformed-response" | "network-error";
 
 export type MyHomeCollectionIssue = Readonly<{
-  districtCode: MyHomeDistrictCode;
+  areaCode: string;
   kind: MyHomeCollectionIssueKind;
   message: string;
   pageNumber: number;
@@ -45,36 +64,11 @@ export type MyHomeCollectionResult = Readonly<{
 }>;
 
 export type MyHomeClientConfiguration = Readonly<{
+  areaCodes?: readonly string[];
   fetchFunction: PublicDataFetch;
   pageSize?: number;
   serviceKey: string;
 }>;
-
-type PageValue = Readonly<{
-  records: ReadonlyArray<MyHomeRawRecord>;
-  totalCount: number;
-}>;
-
-type DistrictCollectionContext = Readonly<{
-  collectionIssues: MyHomeCollectionIssue[];
-  configuration: MyHomeClientConfiguration;
-  districtCode: MyHomeDistrictCode;
-  pageSize: number;
-  records: MyHomeRawRecord[];
-}>;
-
-type PageFailure = Readonly<{
-  kind: MyHomeCollectionIssueKind;
-  message: string;
-  status?: number;
-  success: false;
-}>;
-
-type PageResult = Readonly<{ success: true; value: PageValue }> | PageFailure;
-
-type TransportResult<T> = Readonly<{ success: true; value: T }> | PageFailure;
-
-type UnknownRecord = Record<string, unknown>;
 
 export async function collectMyHomePublicRentalRecords(
   configuration: MyHomeClientConfiguration,
@@ -82,62 +76,56 @@ export async function collectMyHomePublicRentalRecords(
   const records: MyHomeRawRecord[] = [];
   const collectionIssues: MyHomeCollectionIssue[] = [];
   const pageSize = resolvePageSize(configuration.pageSize);
-  for (const districtCode of SEONGNAM_DISTRICT_CODES) {
-    await collectDistrict(configuration, districtCode, pageSize, records, collectionIssues);
+  const areaCodes = resolveAreaCodes(configuration.areaCodes);
+  for (const areaCode of areaCodes) {
+    await collectArea(configuration, areaCode, pageSize, records, collectionIssues);
   }
   return { collectionIssues, records };
 }
 
-async function collectDistrict(
+async function collectArea(
   configuration: MyHomeClientConfiguration,
-  districtCode: MyHomeDistrictCode,
+  areaCode: string,
   pageSize: number,
   records: MyHomeRawRecord[],
   collectionIssues: MyHomeCollectionIssue[],
 ) {
-  const context = { collectionIssues, configuration, districtCode, pageSize, records };
-  return collectDistrictPage(context, 1);
+  const context = { areaCode, collectionIssues, configuration, pageSize, records };
+  return collectAreaPage(context, 1);
 }
 
-async function collectDistrictPage(
-  context: DistrictCollectionContext,
-  pageNumber: number,
-): Promise<void> {
+async function collectAreaPage(context: CollectionContext, pageNumber: number): Promise<void> {
   const result = await fetchMyHomePage(
     context.configuration,
-    context.districtCode,
+    context.areaCode,
     context.pageSize,
     pageNumber,
   );
   if (!result.success) return recordContextIssue(result, context, pageNumber);
-  return collectNextDistrictPage(result.value, context, pageNumber);
+  return collectNextAreaPage(result.value, context, pageNumber);
 }
 
-async function collectNextDistrictPage(
+async function collectNextAreaPage(
   value: PageValue,
-  context: DistrictCollectionContext,
+  context: CollectionContext,
   pageNumber: number,
 ) {
   context.records.push(...value.records);
   if (!hasNextPage(value.totalCount, context.pageSize, pageNumber)) return;
-  return collectDistrictPage(context, pageNumber + 1);
+  return collectAreaPage(context, pageNumber + 1);
 }
 
-function recordContextIssue(
-  failure: PageFailure,
-  context: DistrictCollectionContext,
-  pageNumber: number,
-) {
-  return recordIssue(failure, context.districtCode, pageNumber, context.collectionIssues);
+function recordContextIssue(failure: PageFailure, context: CollectionContext, pageNumber: number) {
+  return recordIssue(failure, context.areaCode, pageNumber, context.collectionIssues);
 }
 
 async function fetchMyHomePage(
   configuration: MyHomeClientConfiguration,
-  districtCode: MyHomeDistrictCode,
+  areaCode: string,
   pageSize: number,
   pageNumber: number,
 ): Promise<PageResult> {
-  const url = createMyHomeUrl(configuration.serviceKey, districtCode, pageSize, pageNumber);
+  const url = createMyHomeUrl(configuration.serviceKey, areaCode, pageSize, pageNumber);
   const response = await requestResponse(configuration.fetchFunction, url);
   if (!response.success) return response;
   const validResponse = validateResponse(response.value);
@@ -149,14 +137,14 @@ async function fetchMyHomePage(
 
 function createMyHomeUrl(
   serviceKey: string,
-  districtCode: MyHomeDistrictCode,
+  areaCode: string,
   pageSize: number,
   pageNumber: number,
 ) {
   const url = new URL(MY_HOME_ENDPOINT);
   url.searchParams.set("serviceKey", serviceKey);
   url.searchParams.set("brtcCode", "41");
-  url.searchParams.set("signguCode", districtCode);
+  url.searchParams.set("signguCode", areaCode);
   url.searchParams.set("numOfRows", String(pageSize));
   url.searchParams.set("pageNo", String(pageNumber));
   return url;
@@ -193,6 +181,7 @@ async function readResponsePayload(
 function parseMyHomePage(payload: unknown): PageResult {
   const root = readResponseRoot(payload);
   if (!root) return fail("malformed-response", "마이홈 API 응답 형식이 올바르지 않습니다.");
+  if (hasNoData(root)) return succeed({ records: [], totalCount: 0 });
   if (hasApiError(root)) return fail("api-error", "마이홈 API가 오류 코드를 반환했습니다.");
   const values = readRecordValues(root);
   if (!values) return fail("malformed-response", "마이홈 단지 목록이 없습니다.");
@@ -218,17 +207,29 @@ function combineArrayEnvelope(payload: unknown): UnknownRecord | undefined {
   return Object.assign({}, ...records);
 }
 
+function hasNoData(root: UnknownRecord) {
+  return readApiCode(root) === "03";
+}
+
 function hasApiError(root: UnknownRecord) {
-  const code = readText(root.code);
-  if (code !== undefined) return !isSuccessfulCode(code);
+  const code = readApiCode(root);
+  if (code === undefined) return false;
+  return !isSuccessfulCode(code) && !isNoDataCode(code);
+}
+
+function readApiCode(root: UnknownRecord) {
+  const topLevelCode = readText(root.code);
+  if (topLevelCode !== undefined) return topLevelCode;
   const header = readSingleRecord(root.header);
-  const resultCode = readText(header?.resultCode);
-  if (resultCode === undefined) return false;
-  return !isSuccessfulCode(resultCode);
+  return readText(header?.resultCode);
 }
 
 function isSuccessfulCode(code: string) {
   return code === "0" || code === "00" || code === "000";
+}
+
+function isNoDataCode(code: string) {
+  return code === "03";
 }
 
 function readRecordValues(root: UnknownRecord): ReadonlyArray<unknown> | undefined {
@@ -300,23 +301,36 @@ function resolvePageSize(pageSize: number | undefined) {
   return DEFAULT_PAGE_SIZE;
 }
 
+function resolveAreaCodes(areaCodes: readonly string[] | undefined) {
+  if (!areaCodes || areaCodes.length === 0) return GYEONGGI_AREA_CODES;
+  return [...new Set(areaCodes.map(normalizeAreaCode).filter(Boolean))];
+}
+
+function normalizeAreaCode(areaCode: string) {
+  return areaCode.trim();
+}
+
 function hasNextPage(totalCount: number, pageSize: number, pageNumber: number) {
   return pageNumber * pageSize < totalCount;
 }
 
 function recordIssue(
   failure: PageFailure,
-  districtCode: MyHomeDistrictCode,
+  areaCode: string,
   pageNumber: number,
   collectionIssues: MyHomeCollectionIssue[],
 ) {
   collectionIssues.push({
-    districtCode,
+    areaCode,
     kind: failure.kind,
     message: failure.message,
     pageNumber,
     status: failure.status,
   });
+}
+
+function readAreaCode(area: (typeof GYEONGGI_COLLECTION_AREAS)[number]) {
+  return area.code;
 }
 
 function isUnknownRecord(value: unknown): value is UnknownRecord {

@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from "react";
 
-import type { PublicRentalLegalCategory, PublicRentalLocation } from "@/domain/public-rental";
+import type {
+  PublicRentalLegalCategory,
+  PublicRentalLocation,
+  PublicRentalMunicipality,
+} from "@/domain/public-rental";
 import {
   renderKakaoMap,
   type KakaoMapController,
@@ -16,15 +20,16 @@ import { createMapMarkerDetail } from "./map-location-detail";
 import { MapLocationPanel, type MapLocationPanelProperties } from "./map-location-panel";
 import {
   createAvailableCategories,
+  createAvailableMunicipalities,
   filterMapLocations,
   toggleCategory,
   type MunicipalityFilter,
 } from "./map-location-filter";
 
-const DUAL_CITY_CENTER = {
-  latitude: 37.35,
-  level: 9,
-  longitude: 127.13,
+const GYEONGGI_CENTER = {
+  latitude: 37.45,
+  level: 10,
+  longitude: 127.25,
 };
 
 const COLLAPSED_MAP_PADDING: MapPadding = {
@@ -79,6 +84,7 @@ type ExplorerActions = Readonly<{
 type ExplorerModel = Readonly<{
   actions: ExplorerActions;
   availableCategories: readonly PublicRentalLegalCategory[];
+  availableMunicipalities: readonly PublicRentalMunicipality[];
   displayedLocations: readonly PublicRentalLocation[];
   pendingLocationCount: number | undefined;
   selectedLocation: PublicRentalLocation | undefined;
@@ -214,7 +220,7 @@ function renderController(
 ) {
   const lifecycle: ControllerLifecycle = { active: true };
   setMapState(LOADING_STATE);
-  const configuration = { ...DUAL_CITY_CENTER, onViewportChanged };
+  const configuration = { ...GYEONGGI_CENTER, onViewportChanged };
   renderKakaoMap(container, javascriptKey.trim(), configuration, markers)
     .then((controller) => completeController(controller, lifecycle, references, setMapState))
     .catch(() => failController(lifecycle, setMapState));
@@ -316,6 +322,10 @@ function useMapExplorer(locations: readonly PublicRentalLocation[]): ExplorerMod
   const selectedLocation = findLocation(displayed, state.selectedLocationId);
   const pendingLocationCount = readPendingLocationCount(filtered, displayed, state);
   const availableCategories = useMemo(() => createAvailableCategories(locations), [locations]);
+  const availableMunicipalities = useMemo(
+    () => createAvailableMunicipalities(locations),
+    [locations],
+  );
   return createExplorerModel(
     state,
     actions,
@@ -323,6 +333,7 @@ function useMapExplorer(locations: readonly PublicRentalLocation[]): ExplorerMod
     selectedLocation,
     pendingLocationCount,
     availableCategories,
+    availableMunicipalities,
   );
 }
 
@@ -350,11 +361,13 @@ function createExplorerModel(
   selectedLocation: PublicRentalLocation | undefined,
   pendingLocationCount: number | undefined,
   availableCategories: readonly PublicRentalLegalCategory[],
+  availableMunicipalities: readonly PublicRentalMunicipality[],
 ): ExplorerModel {
   const selectedLocationId = selectedLocation?.id;
   return {
     actions,
     availableCategories,
+    availableMunicipalities,
     displayedLocations,
     pendingLocationCount,
     selectedLocation,
@@ -557,6 +570,7 @@ function createPanelProperties(
 ): MapLocationPanelProperties {
   return {
     availableCategories: explorer.availableCategories,
+    availableMunicipalities: explorer.availableMunicipalities,
     categories: explorer.state.categories,
     expanded: explorer.state.expanded,
     generatedAt: properties.snapshotGeneratedAt,
@@ -613,7 +627,7 @@ function MapCanvas({
   return (
     <div
       aria-busy={mapState.status !== "ready"}
-      aria-label="성남시·용인시 LH 임대주택 지도"
+      aria-label="경기도 LH 임대주택 지도"
       className="h-full w-full"
       data-map-state={mapState.status}
       ref={containerReference}
