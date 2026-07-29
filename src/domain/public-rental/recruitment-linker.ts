@@ -1,5 +1,18 @@
 import type { PublicRentalLocation, PublicRentalRecruitmentNotice } from "./public-rental-location";
 
+const REVIEWED_COMPLEX_LOCATION_IDS = new Map([
+  ["의정부민락2b3bl", "31191377"],
+  ["의정부고산s4bl", "31274353"],
+  ["의정부고산s5bl", "31276982"],
+  ["오산청학h1블록", "31206494"],
+  ["오산세교주상1블록", "31110418"],
+  ["오산청호2블록", "31191160"],
+  ["오산세교2a6블럭", "31467977"],
+  ["오산세교2a7블록", "31205874"],
+  ["하남감일8단지", "31297390"],
+  ["하남미사13단지", "30855346"],
+]);
+
 export type PublicRentalRecruitmentCandidate = Readonly<{
   complexId: string | null;
   complexName: string | null;
@@ -46,13 +59,24 @@ function findCandidateMatches(
   candidate: PublicRentalRecruitmentCandidate,
   locations: readonly PublicRentalLocation[],
 ) {
+  const reviewedLocationId = readReviewedLocationId(candidate.complexName);
+  if (reviewedLocationId) return locations.filter(matchesLocationIdentifier(reviewedLocationId));
   const complexId = candidate.complexId;
   if (hasText(complexId)) return locations.filter(matchesComplexIdentifier(complexId));
   return locations.filter(matchesComplexName(candidate));
 }
 
+function readReviewedLocationId(complexName: string | null) {
+  if (!hasText(complexName)) return undefined;
+  return REVIEWED_COMPLEX_LOCATION_IDS.get(normalizeName(complexName));
+}
+
 function matchesComplexIdentifier(complexId: string) {
   return (location: PublicRentalLocation) => readLocationIdentifiers(location).includes(complexId);
+}
+
+function matchesLocationIdentifier(locationId: string) {
+  return (location: PublicRentalLocation) => location.id === locationId;
 }
 
 function readLocationIdentifiers(location: PublicRentalLocation) {

@@ -14,6 +14,7 @@ export {
   type PublicRentalRecruitmentCandidate,
   type RecruitmentAttachmentResult,
 } from "./recruitment-linker";
+export { findOfficialRecruitmentNotice } from "./recruitment-notice-link";
 export {
   PublicRentalLocations,
   type PublicRentalCoordinate,

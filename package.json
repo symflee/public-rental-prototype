@@ -13,6 +13,7 @@
     "collect:public-rentals": "node --env-file-if-exists=.env.local --import tsx scripts/collect-public-rentals-csv.ts",
     "collect:public-rentals:api": "node --env-file-if-exists=.env.local --import tsx scripts/collect-public-rentals-api.ts",
     "collect:public-rentals:gyeonggi": "node --env-file-if-exists=.env.local --import tsx scripts/collect-gyeonggi-public-rentals.ts",
+    "analytics:schema": "node --env-file-if-exists=.env.local --import tsx scripts/initialize-analytics-schema.ts",
     "lint": "eslint .",
     "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
@@ -23,6 +24,7 @@
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"

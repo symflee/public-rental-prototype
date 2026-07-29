@@ -8,6 +8,7 @@ import type {
 import type { MapMarkerDetail } from "@/infrastructure/kakao/kakao-map-sdk";
 
 import { createLegalCategoryText, readCategoryLabel, readProviderLabel } from "./map-labels";
+import { RecruitmentInterestButton } from "./recruitment-interest-button";
 
 type CategorySummary = Readonly<{
   areaText: string;
@@ -49,7 +50,10 @@ function LocationDetail({ location }: Readonly<{ location: PublicRentalLocation 
       <LocationFacts location={location} />
       <CategorySummaries location={location} />
       <PropertyNames location={location} />
-      <RecruitmentNoticeLinks notices={location.recruitmentNotices ?? []} />
+      <RecruitmentNoticeLinks
+        locationId={location.id}
+        notices={location.recruitmentNotices ?? []}
+      />
       <SourceLinks sources={location.sourceRecords} />
     </section>
   );
@@ -132,24 +136,32 @@ function PropertyNames({ location }: Readonly<{ location: PublicRentalLocation }
 }
 
 function RecruitmentNoticeLinks({
+  locationId,
   notices,
-}: Readonly<{ notices: readonly PublicRentalRecruitmentNotice[] }>) {
-  if (notices.length === 0) return null;
+}: Readonly<{ locationId: string; notices: readonly PublicRentalRecruitmentNotice[] }>) {
+  if (notices.length === 0) return <RecruitmentInterestButton locationId={locationId} />;
   return (
     <div className="mt-4">
       <h3 className="text-xs font-semibold text-slate-500">모집 중 공고</h3>
-      <ul className="mt-2 space-y-2">{notices.map(RecruitmentNoticeLink)}</ul>
+      <ul className="mt-2 space-y-2">
+        {notices.map((notice) => (
+          <RecruitmentNoticeLink key={notice.id} locationId={locationId} notice={notice} />
+        ))}
+      </ul>
     </div>
   );
 }
 
-function RecruitmentNoticeLink(notice: PublicRentalRecruitmentNotice) {
+function RecruitmentNoticeLink({
+  locationId,
+  notice,
+}: Readonly<{ locationId: string; notice: PublicRentalRecruitmentNotice }>) {
   return (
     <li key={notice.id}>
       <a
         aria-label={notice.title}
         className="block rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 underline underline-offset-2"
-        href={notice.url}
+        href={createTrackedRecruitmentUrl(locationId, notice.id)}
         rel="noreferrer"
         target="_blank"
       >
@@ -158,6 +170,11 @@ function RecruitmentNoticeLink(notice: PublicRentalRecruitmentNotice) {
       </a>
     </li>
   );
+}
+
+function createTrackedRecruitmentUrl(locationId: string, noticeId: string) {
+  const parameters = new URLSearchParams({ locationId });
+  return `/out/${encodeURIComponent(noticeId)}?${parameters.toString()}`;
 }
 
 function RecruitmentNoticeDate({ announcedAt }: Readonly<{ announcedAt: string | null }>) {

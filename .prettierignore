@@ -1,2 +1,3 @@
 pnpm-lock.yaml
+database/*.sql
 src/infrastructure/public-data/generated/

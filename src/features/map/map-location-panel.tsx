@@ -231,7 +231,12 @@ function ResetFilterButton(properties: MapLocationPanelProperties) {
 
 function LocationList(properties: MapLocationPanelProperties) {
   if (properties.locations.length === 0)
-    return <EmptyLocationList clustered={properties.clustered} />;
+    return (
+      <EmptyLocationList
+        clustered={properties.clustered}
+        hasResults={readLocationCount(properties) > 0}
+      />
+    );
   return (
     <ul aria-label="임대주택 위치 목록" className="space-y-2 p-3">
       {properties.locations.map((location) => (
@@ -246,8 +251,11 @@ function LocationList(properties: MapLocationPanelProperties) {
   );
 }
 
-function EmptyLocationList({ clustered }: Readonly<{ clustered?: boolean }>) {
-  if (clustered) return <ClusteredLocationList />;
+function EmptyLocationList({
+  clustered,
+  hasResults,
+}: Readonly<{ clustered?: boolean; hasResults: boolean }>) {
+  if (clustered && hasResults) return <ClusteredLocationList />;
   return (
     <div className="p-5 text-center text-sm text-slate-500">
       <p>조건에 맞는 임대주택이 없습니다.</p>

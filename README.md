@@ -135,6 +135,7 @@ pnpm collect:public-rentals:api
 - 지도 이동 후 사용자가 누를 때만 적용하는 `이 지도 영역에서 보기`
 - 목록·핀 선택 동기화와 공급유형별 세대수·면적·공식 출처 상세
 - 모집 중 공고 배지와 마이홈포털 공고 상세 링크
+- 개인 식별자 없이 집계한 지도 조회·공고 확인 행동 분석
 - 데스크톱 384px 패널과 모바일 120px/56dvh 하단 시트
 - 색상 외 한글 약자·범례·텍스트·`aria-live` 안내
 
@@ -147,6 +148,7 @@ pnpm collect:public-rentals:api
 | `pnpm collect:public-rentals`          | CSV 스냅샷·CSV·캐시·보고서 생성        |
 | `pnpm collect:public-rentals:gyeonggi` | 경기도 API 스냅샷·모집공고·좌표 생성   |
 | `pnpm collect:public-rentals:api`      | API 검수 산출물을 별도 생성            |
+| `pnpm analytics:schema`                | Neon 일별 분석 카운터 테이블 생성      |
 | `pnpm lint`                            | ESLint 검사                            |
 | `pnpm format:check`                    | Prettier 검사                          |
 | `pnpm typecheck`                       | TypeScript strict 타입 검사            |
@@ -160,13 +162,44 @@ Playwright를 처음 실행하는 환경에서는 Chromium을 설치합니다.
 pnpm exec playwright install chromium
 ```
 
+## 비식별 공고 확인 분석
+
+분석 DB에는 방문자 쿠키, 계정, IP 주소, User-Agent, 브라우저 지문, 개인별 이벤트를
+저장하지 않습니다. 한국 시간 기준 일별로 아래 행동 횟수만 합산합니다.
+
+- 지도 조회수
+- 실제 공고 열람 클릭 수
+- 미연결 단지의 공고 확인 의향 클릭 수
+
+따라서 결과는 고유 사용자 수가 아닌 행동 횟수입니다. 새로고침, 반복 클릭, 자동화 요청도
+포함될 수 있습니다. Vercel Marketplace에서 Neon을 연결한 뒤 연결 문자열과 아래 서버 전용
+환경 변수를 설정하고 스키마를 한 번 준비합니다.
+
+```dotenv
+DATABASE_URL=Neon_연결_문자열
+ANALYTICS_ADMIN_USERNAME=관리자_아이디
+ANALYTICS_ADMIN_PASSWORD=긴_관리자_비밀번호
+CRON_SECRET=16자_이상_난수
+```
+
+```bash
+pnpm analytics:schema
+```
+
+`/admin/analytics`는 HTTP Basic 인증으로 보호되며 최근 7일, 최근 30일, 이번 달, 최대 1년의
+사용자 지정 기간 집계와 공고별·단지별 순위를 표시합니다. Neon 콘솔에서 직접 추출할 SQL은
+[`database/analytics-queries.sql`](database/analytics-queries.sql)에 있습니다. Vercel Cron은 매일
+한국 시간 자정 무렵 1년이 지난 일별 카운터를 삭제합니다.
+
 ## 구조
 
 - `src/app`: 라우트와 의존성 조립
 - `src/domain/public-rental`: 공공임대 타입과 배포 규칙
+- `src/domain/announcement-analytics`: 비식별 일별 카운터와 대시보드 집계 규칙
 - `src/features/map`: 필터, 목록, 상세, 지도 사용자 흐름
 - `src/infrastructure/kakao`: Kakao SDK·클러스터·마커 컨트롤러
 - `src/infrastructure/public-data`: CSV 파서·정규화·스냅샷
+- `src/infrastructure/analytics`: Neon 카운터 저장소·관리자 인증
 - `src/infrastructure/public-rental-csv`: 파일 탐색·좌표·수집 보고서
 - `scripts`: CSV 기본 수집기와 API 검수 수집기
 - `tests/e2e`: 주요 브라우저 사용자 흐름

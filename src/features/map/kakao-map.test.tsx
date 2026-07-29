@@ -80,11 +80,7 @@ test("지도 준비 후 현재 영역의 집계 핀만 API에서 요청한다", 
 
   render(<KakaoMap javascriptKey="javascript-key" />);
 
-  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-  expect(fetch).toHaveBeenCalledWith(
-    expect.stringContaining("/api/public-rentals?"),
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
-  );
+  await waitFor(() => expectMapDataRequest(fetch));
   await waitFor(() => expect(readLatestReplacementIdentifiers()).toEqual(["cluster:3:2"]));
   act(() => readLatestReplacementMarkers()[0]?.onClick?.("cluster:3:2"));
   expect(controller.focusBounds).toHaveBeenCalledWith(
@@ -92,6 +88,13 @@ test("지도 준비 후 현재 영역의 집계 핀만 API에서 요청한다", 
     expect.any(Object),
   );
 });
+
+function expectMapDataRequest(fetchMock: typeof fetch) {
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining("/api/public-rentals?"),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+}
 
 test("키가 없어도 성남·용인 위치 목록과 설정 안내를 표시한다", () => {
   render(<KakaoMap locations={LOCATIONS} />);

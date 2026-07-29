@@ -30,6 +30,7 @@ import {
   type MunicipalityFilter,
 } from "./map-location-filter";
 import { usePublicRentalMapData, type PublicRentalMapData } from "./public-rental-map-data";
+import { usePageViewAnalytics } from "./use-page-view-analytics";
 
 const GYEONGGI_CENTER = {
   latitude: 37.45,
@@ -150,6 +151,7 @@ export function KakaoMap(properties: KakaoMapProperties) {
     createRuntimeInput(properties, explorer, markers, onViewportChanged),
     references,
   );
+  usePageViewAnalytics(mapState.status);
   const layout = createLayoutProperties(explorer, mapState, interactions);
   return <KakaoMapLayout {...layout} containerReference={containerReference} />;
 }

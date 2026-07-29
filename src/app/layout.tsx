@@ -15,7 +15,14 @@ type RootLayoutProperties = Readonly<{
 export default function RootLayout({ children }: RootLayoutProperties) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        {children}
+        <footer className="fixed bottom-3 right-3 z-50 rounded-full bg-white/95 px-3 py-1.5 text-xs shadow-sm ring-1 ring-slate-200">
+          <a className="font-medium text-slate-700 underline underline-offset-2" href="/privacy">
+            개인정보처리방침
+          </a>
+        </footer>
+      </body>
     </html>
   );
 }
