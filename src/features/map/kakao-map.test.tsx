@@ -105,6 +105,23 @@ test("키가 없어도 성남·용인 위치 목록과 설정 안내를 표시�
   expect(renderKakaoMapMock).not.toHaveBeenCalled();
 });
 
+test("지도는 성남시 중심을 시 경계가 보이는 줌으로 시작한다", async () => {
+  render(<KakaoMap javascriptKey=" javascript-key " />);
+
+  await waitFor(() =>
+    expect(renderKakaoMapMock).toHaveBeenCalledWith(
+      expect.any(HTMLDivElement),
+      "javascript-key",
+      expect.objectContaining({
+        latitude: 37.420035,
+        level: 8,
+        longitude: 127.127243,
+      }),
+      expect.any(Array),
+    ),
+  );
+});
+
 test("좌표가 있는 위치를 카테고리 정보와 동일한 위치 ID의 마커로 만든다", async () => {
   render(<KakaoMap javascriptKey=" javascript-key " locations={LOCATIONS} />);
 

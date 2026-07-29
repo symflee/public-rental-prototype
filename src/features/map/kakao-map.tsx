@@ -32,10 +32,10 @@ import {
 import { usePublicRentalMapData, type PublicRentalMapData } from "./public-rental-map-data";
 import { usePageViewAnalytics } from "./use-page-view-analytics";
 
-const GYEONGGI_CENTER = {
-  latitude: 37.45,
-  level: 10,
-  longitude: 127.25,
+const SEONGNAM_INITIAL_VIEW = {
+  latitude: 37.420035,
+  level: 8,
+  longitude: 127.127243,
 };
 
 const COLLAPSED_MAP_PADDING: MapPadding = {
@@ -245,7 +245,7 @@ function renderController(
 ) {
   const lifecycle: ControllerLifecycle = { active: true };
   setMapState(LOADING_STATE);
-  const configuration = { ...GYEONGGI_CENTER, onViewportChanged };
+  const configuration = { ...SEONGNAM_INITIAL_VIEW, onViewportChanged };
   renderKakaoMap(container, javascriptKey.trim(), configuration, markers)
     .then((controller) =>
       completeController(controller, lifecycle, onViewportChanged, references, setMapState),
