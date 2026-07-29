@@ -186,6 +186,10 @@ CRON_SECRET=16자_이상_난수
 pnpm analytics:schema
 ```
 
+Vercel의 Sensitive 환경 변수는 로컬 CLI로 내려받을 수 없으므로, 로컬에 Neon 연결 문자열을
+두지 않는 경우에는 Neon SQL Editor에서
+[`database/analytics-schema.sql`](database/analytics-schema.sql)을 한 번 실행합니다.
+
 `/admin/analytics`는 HTTP Basic 인증으로 보호되며 최근 7일, 최근 30일, 이번 달, 최대 1년의
 사용자 지정 기간 집계와 공고별·단지별 순위를 표시합니다. Neon 콘솔에서 직접 추출할 SQL은
 [`database/analytics-queries.sql`](database/analytics-queries.sql)에 있습니다. Vercel Cron은 매일
