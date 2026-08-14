@@ -11,35 +11,76 @@ export type AnalyticsDashboard = Readonly<{
   announcementRanks: readonly AnalyticsRank[];
   announcementActionCount: number;
   announcementActionRate: number;
+  locationDetailViewCount: number;
   locationRanks: readonly AnalyticsRank[];
+  noOpenNoticeLocationDetailViewCount: number;
+  noOpenNoticeLocationDetailViewRate: number;
+  pageViewCount: number;
+}>;
+
+type DashboardCounts = Readonly<{
+  announcementInterestCount: number;
+  announcementOpenCount: number;
+  noOpenNoticeLocationDetailViewCount: number;
+  openNoticeLocationDetailViewCount: number;
   pageViewCount: number;
 }>;
 
 export function createAnalyticsDashboard(
   counters: readonly AnalyticsCounter[],
 ): AnalyticsDashboard {
-  const pageViewCount = sumEventCounters(counters, "PAGE_VIEW");
-  const announcementOpenCount = sumEventCounters(counters, "ANNOUNCEMENT_OPEN");
-  const announcementInterestCount = sumEventCounters(counters, "ANNOUNCEMENT_INTEREST");
-  return createDashboard(pageViewCount, announcementOpenCount, announcementInterestCount, counters);
+  return createDashboard(createDashboardCounts(counters), counters);
 }
 
 function createDashboard(
-  pageViewCount: number,
-  announcementOpenCount: number,
-  announcementInterestCount: number,
+  counts: DashboardCounts,
   counters: readonly AnalyticsCounter[],
 ): AnalyticsDashboard {
-  const announcementActionCount = announcementOpenCount + announcementInterestCount;
   return {
-    announcementActionCount,
-    announcementActionRate: createActionRate(announcementActionCount, pageViewCount),
-    announcementInterestCount,
-    announcementOpenCount,
+    ...createAnnouncementSummary(counts),
+    ...createLocationDetailSummary(counts),
+    announcementInterestCount: counts.announcementInterestCount,
+    announcementOpenCount: counts.announcementOpenCount,
     announcementRanks: createRanks(counters, "ANNOUNCEMENT_OPEN"),
     locationRanks: createRanks(counters, "ANNOUNCEMENT_INTEREST"),
-    pageViewCount,
+    pageViewCount: counts.pageViewCount,
   };
+}
+
+function createDashboardCounts(counters: readonly AnalyticsCounter[]): DashboardCounts {
+  return {
+    announcementInterestCount: sumEventCounters(counters, "ANNOUNCEMENT_INTEREST"),
+    announcementOpenCount: sumEventCounters(counters, "ANNOUNCEMENT_OPEN"),
+    noOpenNoticeLocationDetailViewCount: sumNoOpenDetailViews(counters),
+    openNoticeLocationDetailViewCount: sumOpenDetailViews(counters),
+    pageViewCount: sumEventCounters(counters, "PAGE_VIEW"),
+  };
+}
+
+function createAnnouncementSummary(counts: DashboardCounts) {
+  const count = counts.announcementOpenCount + counts.announcementInterestCount;
+  return {
+    announcementActionCount: count,
+    announcementActionRate: createRate(count, counts.pageViewCount),
+  };
+}
+
+function createLocationDetailSummary(counts: DashboardCounts) {
+  const noOpenCount = counts.noOpenNoticeLocationDetailViewCount;
+  const total = counts.openNoticeLocationDetailViewCount + noOpenCount;
+  return {
+    locationDetailViewCount: total,
+    noOpenNoticeLocationDetailViewCount: noOpenCount,
+    noOpenNoticeLocationDetailViewRate: createRate(noOpenCount, total),
+  };
+}
+
+function sumOpenDetailViews(counters: readonly AnalyticsCounter[]) {
+  return sumEventCounters(counters, "OPEN_NOTICE_LOCATION_DETAIL_VIEW");
+}
+
+function sumNoOpenDetailViews(counters: readonly AnalyticsCounter[]) {
+  return sumEventCounters(counters, "NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW");
 }
 
 function sumEventCounters(counters: readonly AnalyticsCounter[], eventKind: AnalyticsEventKind) {
@@ -50,9 +91,9 @@ function sumCounterTotals(total: number, counter: AnalyticsCounter) {
   return total + counter.total;
 }
 
-function createActionRate(actionCount: number, pageViewCount: number) {
-  if (pageViewCount === 0) return 0;
-  return (actionCount / pageViewCount) * 100;
+function createRate(numerator: number, denominator: number) {
+  if (denominator === 0) return 0;
+  return (numerator / denominator) * 100;
 }
 
 function createRanks(counters: readonly AnalyticsCounter[], eventKind: AnalyticsEventKind) {

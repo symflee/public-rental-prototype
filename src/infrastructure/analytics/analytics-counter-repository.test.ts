@@ -3,8 +3,10 @@ import { expect, test } from "vitest";
 import { createPageViewCounter } from "@/domain/announcement-analytics";
 
 import {
+  AnalyticsDatabaseConfigurationError,
   createAnalyticsCounterRepository,
   createAnalyticsCounterRepositoryWithExecutor,
+  type AnalyticsDashboardDemoDays,
   type AnalyticsSqlExecutor,
 } from "./analytics-counter-repository";
 import { ANALYTICS_SCHEMA_STATEMENTS } from "./analytics-schema";
@@ -55,6 +57,38 @@ test("Neon이 Date 객체로 반환한 일별 카운터도 읽는다", async () 
   ]);
 });
 
+test("대시보드 데모 카운터를 정확한 범위에서 지우고 8행으로 원자 교체한다", async () => {
+  const calls: unknown[][] = [];
+  const repository = createAnalyticsCounterRepositoryWithExecutor(createExecutor(calls));
+
+  await repository.replaceAnalyticsDashboardDemo(createDemoDays());
+
+  expect(calls).toHaveLength(1);
+  expectDemoReplacement(calls[0]);
+});
+
+test("대시보드 데모 카운터만 정확한 조건으로 정리한다", async () => {
+  const calls: unknown[][] = [];
+  const repository = createAnalyticsCounterRepositoryWithExecutor(createExecutor(calls));
+
+  await repository.clearAnalyticsDashboardDemo();
+
+  expect(calls).toHaveLength(1);
+  expectDemoDelete(calls[0]?.[0]);
+  expect(calls[0]?.[1]).toEqual([]);
+});
+
+test("DB가 없으면 대시보드 데모 작업을 명확히 거부한다", async () => {
+  const repository = createAnalyticsCounterRepository("");
+
+  await expect(repository.replaceAnalyticsDashboardDemo(createDemoDays())).rejects.toBeInstanceOf(
+    AnalyticsDatabaseConfigurationError,
+  );
+  await expect(repository.clearAnalyticsDashboardDemo()).rejects.toBeInstanceOf(
+    AnalyticsDatabaseConfigurationError,
+  );
+});
+
 function createExecutor(calls: unknown[][]): AnalyticsSqlExecutor {
   return {
     execute: async (statement, parameters) => {
@@ -78,4 +112,43 @@ function createDatabaseCounter() {
     subject_kind: "SITE",
     total: "3",
   };
+}
+
+function createDemoDays(): AnalyticsDashboardDemoDays {
+  return [
+    createDemoDay("2026-08-11", 80, 88),
+    createDemoDay("2026-08-12", 85, 94),
+    createDemoDay("2026-08-13", 87, 99),
+    createDemoDay("2026-08-14", 92, 107),
+  ];
+}
+
+function createDemoDay(metricDate: string, openTotal: number, noOpenTotal: number) {
+  return {
+    metricDate,
+    noOpenNoticeLocationDetailViewTotal: noOpenTotal,
+    openNoticeLocationDetailViewTotal: openTotal,
+  };
+}
+
+function expectDemoReplacement(call: unknown[] | undefined) {
+  const statement = call?.[0];
+  expectDemoDelete(statement);
+  expect(statement).toContain("INSERT INTO analytics_daily_counters");
+  expect(statement).toContain("OPEN_NOTICE_LOCATION_DETAIL_VIEW");
+  expect(statement).toContain("NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW");
+  expect(String(statement).match(/::bigint\)/gu)).toHaveLength(8);
+  expect(call?.[1]).toEqual(createDemoParameters());
+}
+
+function expectDemoDelete(statement: unknown) {
+  expect(statement).toContain("subject_kind = 'SITE'");
+  expect(statement).toContain("subject_id = 'dashboard-demo-v1'");
+  expect(statement).toContain("'OPEN_NOTICE_LOCATION_DETAIL_VIEW'");
+  expect(statement).toContain("'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW'");
+  expect(statement).not.toContain("subject_id = 'all'");
+}
+
+function createDemoParameters() {
+  return ["2026-08-11", 80, 88, "2026-08-12", 85, 94, "2026-08-13", 87, 99, "2026-08-14", 92, 107];
 }

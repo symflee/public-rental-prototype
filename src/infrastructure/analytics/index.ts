@@ -4,6 +4,8 @@ export {
   createAnalyticsCounterRepositoryWithExecutor,
   readAnalyticsDatabaseUrl,
   type AnalyticsCounterRepository,
+  type AnalyticsDashboardDemoDay,
+  type AnalyticsDashboardDemoDays,
   type AnalyticsSqlExecutor,
 } from "./analytics-counter-repository";
 export {
@@ -17,9 +19,11 @@ export {
   purgeExpiredAnalyticsCounters,
   readAnalyticsDashboard,
   recordAnnouncementInterest,
+  recordLocationDetailView,
   recordAnnouncementOpen,
   recordPageView,
 } from "./analytics-counter-service";
+export { clearAnalyticsDashboardDemo, seedAnalyticsDashboardDemo } from "./analytics-demo-service";
 export { recordAnalyticsQuietly, recordAnalyticsSafely } from "./record-analytics";
 export {
   ANALYTICS_SCHEMA_STATEMENTS,

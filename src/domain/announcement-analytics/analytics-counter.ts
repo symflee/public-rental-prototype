@@ -2,6 +2,8 @@ export const ANALYTICS_EVENT_KINDS = [
   "PAGE_VIEW",
   "ANNOUNCEMENT_OPEN",
   "ANNOUNCEMENT_INTEREST",
+  "OPEN_NOTICE_LOCATION_DETAIL_VIEW",
+  "NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW",
 ] as const;
 
 export type AnalyticsEventKind = (typeof ANALYTICS_EVENT_KINDS)[number];
@@ -43,6 +45,16 @@ export function createAnnouncementInterestCounter(
   locationId: string,
 ): AnalyticsCounterKey {
   return createCounterKey(metricDate, "ANNOUNCEMENT_INTEREST", "LOCATION", locationId);
+}
+
+export function createOpenNoticeLocationDetailViewCounter(metricDate: string): AnalyticsCounterKey {
+  return createCounterKey(metricDate, "OPEN_NOTICE_LOCATION_DETAIL_VIEW", "SITE", "all");
+}
+
+export function createNoOpenNoticeLocationDetailViewCounter(
+  metricDate: string,
+): AnalyticsCounterKey {
+  return createCounterKey(metricDate, "NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW", "SITE", "all");
 }
 
 function createCounterKey(

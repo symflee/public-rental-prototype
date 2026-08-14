@@ -136,7 +136,7 @@ pnpm collect:public-rentals:api
 - 목록·핀 선택 동기화와 공급유형별 세대수·면적·공식 출처 상세
 - 모집 중 공고 배지와 마이홈포털 공고 상세 링크
 - 브라우저에 보관되는 관심 주택과 저장한 주택만 보기
-- 익명 브라우저 단위 비모집 주택 탐색·북마크 실험 분석
+- 모집공고 연결 상태별 주택 상세 조회 건수 분석
 - 데스크톱 384px 패널과 모바일 120px/56dvh 하단 시트
 - 색상 외 한글 약자·범례·텍스트·`aria-live` 안내
 
@@ -149,7 +149,9 @@ pnpm collect:public-rentals:api
 | `pnpm collect:public-rentals`          | CSV 스냅샷·CSV·캐시·보고서 생성        |
 | `pnpm collect:public-rentals:gyeonggi` | 경기도 API 스냅샷·모집공고·좌표 생성   |
 | `pnpm collect:public-rentals:api`      | API 검수 산출물을 별도 생성            |
-| `pnpm analytics:schema`                | Neon 일별 분석 카운터 테이블 생성      |
+| `pnpm analytics:schema`                | Neon 분석 테이블·제약 준비             |
+| `pnpm analytics:seed-demo`             | 최근 4일 대시보드 샘플 데이터 적재     |
+| `pnpm analytics:clear-demo`            | 대시보드 샘플 데이터만 제거            |
 | `pnpm lint`                            | ESLint 검사                            |
 | `pnpm format:check`                    | Prettier 검사                          |
 | `pnpm typecheck`                       | TypeScript strict 타입 검사            |
@@ -163,15 +165,21 @@ Playwright를 처음 실행하는 환경에서는 Chromium을 설치합니다.
 pnpm exec playwright install chromium
 ```
 
-## 익명 공고·북마크 행동 분석
+## 서비스 이용 분석
 
-기존 공고 확인 분석은 한국 시간 기준 일별 행동 횟수를 합산합니다.
+관리자 대시보드는 한국 시간 기준 일별 행동 횟수를 합산합니다.
 
 - 지도 조회수
+- 전체 주택 정보 조회수
+- 현재 연결된 모집공고가 없는 주택 정보 조회수와 전체 조회 대비 비율
 - 실제 공고 열람 클릭 수
 - 미연결 단지의 공고 확인 의향 클릭 수
 
-전체 임대주택 탐색 가설은 30일 first-party HttpOnly 쿠키로 같은 익명 브라우저를 구분합니다.
+주택 상세 조회는 서버가 스냅샷의 모집공고 연결 상태를 확인한 뒤 일별 합계만 저장합니다. 같은
+주택을 다시 열거나 새로고침한 행동도 새로운 조회 건수에 포함될 수 있으며, 이 카운터에는 방문자
+식별자나 위치 ID를 저장하지 않습니다.
+
+관심 주택 기능의 기존 행동 분석은 30일 first-party HttpOnly 쿠키로 같은 익명 브라우저를 구분합니다.
 DB에는 쿠키 원문이 아닌 서버 HMAC 해시만 저장하며 IP 주소, User-Agent와 브라우저 지문은
 저장하지 않습니다. 지도 준비, 현재 연결된 모집공고가 없는 주택 상세 확인, 북마크 추가·해제와
 모집공고 열람을 중복 제거해 집계합니다. 쿠키 삭제와 여러 브라우저·기기는 서로 다른 방문자로
@@ -201,16 +209,29 @@ Vercel의 Sensitive 환경 변수는 로컬 CLI로 내려받을 수 없으므로
 두지 않는 경우에는 Neon SQL Editor에서
 [`database/analytics-schema.sql`](database/analytics-schema.sql)을 한 번 실행합니다.
 
-`/admin/analytics`는 HTTP Basic 인증으로 보호됩니다. 기존 행동 횟수와 함께 고유 실험 방문자,
-비모집 상세 확인율, 북마크 고유 사용자율, 반복을 포함한 북마크 등록 횟수, 최소 표본 253명과 10%
-성공 기준을 표시합니다. Neon
+`/admin/analytics`는 HTTP Basic 인증으로 보호됩니다. 지도·주택 상세·공고 확인 행동 횟수와
+현재 연결된 모집공고가 없는 주택 상세 조회 비율을 표시합니다. 북마크 관련 지표와 가설 판정은
+관리자 화면에 표시하지 않습니다. Neon
 콘솔에서 직접 추출할 SQL은 [`database/analytics-queries.sql`](database/analytics-queries.sql)에
 있습니다. Vercel Cron은 매일 한국 시간 자정 무렵 90일이 지난 익명 실험 이벤트와 1년이 지난
 일별 카운터를 삭제합니다.
 
-모집 상태가 오래되어 지표가 오염되지 않도록 스냅샷 생성 후 72시간이 지나면 신규 실험 계측을
-자동 중지하고 지도와 관리자 화면에 갱신 경고를 표시합니다. 실험 시작 전과 운영 중 최소 3일마다
-아래 명령으로 데이터를 갱신한 뒤 배포해야 합니다.
+데모 화면에는 최근 4일에 걸친 전체 주택 정보 조회 732건과 비모집 주택 조회 388건을 넣을 수
+있습니다. 샘플은 실제 카운터와 다른 `dashboard-demo-v1` 식별자로 저장되어 다시 실행해도
+중복되지 않으며 별도로 제거할 수 있습니다.
+
+```bash
+pnpm analytics:seed-demo
+pnpm analytics:clear-demo
+```
+
+로컬에 운영 DB 연결 문자열을 두지 않는 경우에는 Neon SQL Editor에서
+[`database/analytics-demo-seed.sql`](database/analytics-demo-seed.sql) 또는
+[`database/analytics-demo-clear.sql`](database/analytics-demo-clear.sql)을 실행합니다.
+
+모집 상태가 오래되어 지표가 오염되지 않도록 스냅샷 생성 후 72시간이 지나면 신규 주택 상세
+조회와 실험 계측을 자동 중지합니다. 운영 중 최소 3일마다 아래 명령으로 데이터를 갱신한 뒤
+배포해야 합니다.
 
 ```bash
 pnpm collect:public-rentals:gyeonggi

@@ -3,6 +3,8 @@ export {
   ANALYTICS_SUBJECT_KINDS,
   createAnnouncementInterestCounter,
   createAnnouncementOpenCounter,
+  createNoOpenNoticeLocationDetailViewCounter,
+  createOpenNoticeLocationDetailViewCounter,
   createPageViewCounter,
   type AnalyticsCounter,
   type AnalyticsCounterKey,

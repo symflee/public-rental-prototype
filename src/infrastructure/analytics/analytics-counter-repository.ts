@@ -21,12 +21,27 @@ export type AnalyticsSqlExecutor = Readonly<{
   ) => Promise<readonly unknown[]>;
 }>;
 
+export type AnalyticsDashboardDemoDay = Readonly<{
+  metricDate: string;
+  noOpenNoticeLocationDetailViewTotal: number;
+  openNoticeLocationDetailViewTotal: number;
+}>;
+
+export type AnalyticsDashboardDemoDays = readonly [
+  AnalyticsDashboardDemoDay,
+  AnalyticsDashboardDemoDay,
+  AnalyticsDashboardDemoDay,
+  AnalyticsDashboardDemoDay,
+];
+
 export type AnalyticsCounterRepository = Readonly<{
+  clearAnalyticsDashboardDemo: () => Promise<void>;
   increment: (counter: AnalyticsCounterKey) => Promise<void>;
   initialize: () => Promise<void>;
   isEnabled: () => boolean;
   purgeBefore: (metricDate: string) => Promise<void>;
   read: (range: AnalyticsDateRange) => Promise<readonly AnalyticsCounter[]>;
+  replaceAnalyticsDashboardDemo: (days: AnalyticsDashboardDemoDays) => Promise<void>;
 }>;
 
 export class AnalyticsDatabaseConfigurationError extends Error {
@@ -48,6 +63,39 @@ const READ_COUNTERS = `
   ORDER BY metric_date ASC
 `;
 const PURGE_COUNTERS = "DELETE FROM analytics_daily_counters WHERE metric_date < $1";
+const DELETE_ANALYTICS_DASHBOARD_DEMO = `
+  DELETE FROM analytics_daily_counters
+  WHERE subject_kind = 'SITE'
+    AND subject_id = 'dashboard-demo-v1'
+    AND event_kind IN (
+      'OPEN_NOTICE_LOCATION_DETAIL_VIEW',
+      'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW'
+    )
+`;
+const REPLACE_ANALYTICS_DASHBOARD_DEMO = `
+  WITH deleted_demo AS (
+    ${DELETE_ANALYTICS_DASHBOARD_DEMO}
+    RETURNING 1
+  ), seeded_counters (metric_date, event_kind, total) AS (
+    VALUES
+      ($1::date, 'OPEN_NOTICE_LOCATION_DETAIL_VIEW', $2::bigint),
+      ($1::date, 'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW', $3::bigint),
+      ($4::date, 'OPEN_NOTICE_LOCATION_DETAIL_VIEW', $5::bigint),
+      ($4::date, 'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW', $6::bigint),
+      ($7::date, 'OPEN_NOTICE_LOCATION_DETAIL_VIEW', $8::bigint),
+      ($7::date, 'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW', $9::bigint),
+      ($10::date, 'OPEN_NOTICE_LOCATION_DETAIL_VIEW', $11::bigint),
+      ($10::date, 'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW', $12::bigint)
+  )
+  INSERT INTO analytics_daily_counters (
+    metric_date, event_kind, subject_kind, subject_id, total
+  )
+  SELECT seeded_counters.metric_date, seeded_counters.event_kind,
+    'SITE', 'dashboard-demo-v1', seeded_counters.total
+  FROM seeded_counters
+  CROSS JOIN (SELECT COUNT(*) AS deleted_total FROM deleted_demo) AS deletion
+  WHERE deletion.deleted_total >= 0
+`;
 
 export function createAnalyticsCounterRepository(
   connectionString = readAnalyticsDatabaseUrl(),
@@ -60,11 +108,13 @@ export function createAnalyticsCounterRepositoryWithExecutor(
   executor: AnalyticsSqlExecutor,
 ): AnalyticsCounterRepository {
   return {
+    clearAnalyticsDashboardDemo: () => clearAnalyticsDashboardDemo(executor),
     increment: (counter) => incrementCounter(executor, counter),
     initialize: () => initializeAnalyticsSchema(executor),
     isEnabled: () => true,
     purgeBefore: (metricDate) => purgeCounters(executor, metricDate),
     read: (range) => readCounters(executor, range),
+    replaceAnalyticsDashboardDemo: (days) => replaceAnalyticsDashboardDemo(executor, days),
   };
 }
 
@@ -80,12 +130,18 @@ function createNeonExecutor(connectionString: string): AnalyticsSqlExecutor {
 
 function createDisabledRepository(): AnalyticsCounterRepository {
   return {
+    clearAnalyticsDashboardDemo: rejectDatabaseConfiguration,
     increment: async () => undefined,
     initialize: () => Promise.reject(new AnalyticsDatabaseConfigurationError()),
     isEnabled: () => false,
     purgeBefore: async () => undefined,
     read: async () => [],
+    replaceAnalyticsDashboardDemo: rejectDatabaseConfiguration,
   };
+}
+
+function rejectDatabaseConfiguration() {
+  return Promise.reject(new AnalyticsDatabaseConfigurationError());
 }
 
 async function incrementCounter(executor: AnalyticsSqlExecutor, counter: AnalyticsCounterKey) {
@@ -102,6 +158,25 @@ async function initializeAnalyticsSchema(executor: AnalyticsSqlExecutor) {
 
 async function purgeCounters(executor: AnalyticsSqlExecutor, metricDate: string) {
   await executor.execute(PURGE_COUNTERS, [metricDate]);
+}
+
+async function clearAnalyticsDashboardDemo(executor: AnalyticsSqlExecutor) {
+  await executor.execute(DELETE_ANALYTICS_DASHBOARD_DEMO, []);
+}
+
+async function replaceAnalyticsDashboardDemo(
+  executor: AnalyticsSqlExecutor,
+  days: AnalyticsDashboardDemoDays,
+) {
+  await executor.execute(REPLACE_ANALYTICS_DASHBOARD_DEMO, createDemoParameters(days));
+}
+
+function createDemoParameters(days: AnalyticsDashboardDemoDays) {
+  return days.flatMap((day) => [
+    day.metricDate,
+    day.openNoticeLocationDetailViewTotal,
+    day.noOpenNoticeLocationDetailViewTotal,
+  ]);
 }
 
 async function readCounters(executor: AnalyticsSqlExecutor, range: AnalyticsDateRange) {

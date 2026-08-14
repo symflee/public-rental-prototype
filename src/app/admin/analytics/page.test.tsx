@@ -3,77 +3,110 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import AnalyticsPage from "./page";
 
-const { readAllHomesBookmarkAddedEventCount, readAnalyticsDashboard, readExperimentFacts } =
-  vi.hoisted(() => ({
-    readAllHomesBookmarkAddedEventCount: vi.fn(),
-    readAnalyticsDashboard: vi.fn(),
-    readExperimentFacts: vi.fn(),
-  }));
-
-vi.mock("@/infrastructure/analytics", () => ({
-  isAnalyticsStorageEnabled: () => true,
-  isExperimentAnalyticsEnabled: () => true,
-  readAllHomesBookmarkAddedEventCount,
-  readAnalyticsDashboard,
-  readExperimentFacts,
+const mocks = vi.hoisted(() => ({
+  isAnalyticsStorageEnabled: vi.fn(() => true),
+  readAnalyticsDashboard: vi.fn(),
 }));
 
+vi.mock("@/infrastructure/analytics", () => mocks);
+
 beforeEach(() => {
-  readAllHomesBookmarkAddedEventCount.mockResolvedValue(0);
-  readAnalyticsDashboard.mockResolvedValue(createDashboard());
-  readExperimentFacts.mockResolvedValue([]);
+  vi.clearAllMocks();
+  mocks.isAnalyticsStorageEnabled.mockReturnValue(true);
+  mocks.readAnalyticsDashboard.mockResolvedValue(createDashboard());
 });
 
-test("검토자가 지도 조회와 공고 확인 의사만 먼저 확인한다", async () => {
-  render(await AnalyticsPage({ searchParams: Promise.resolve({ period: "7d" }) }));
+test("일반 서비스 이용 지표와 주택 정보 조회 카드 세 개를 표시한다", async () => {
+  await renderAnalyticsPage();
 
-  expect(screen.getByRole("heading", { name: "핵심 검증 지표" })).toBeVisible();
-  expect(screen.getByText("지도 조회수")).toBeVisible();
-  expect(screen.getByText("페이크 도어 테스트")).toBeVisible();
-  expect(screen.getByText("공고 확인해보기를 누른 횟수입니다.")).toBeVisible();
-  expect(readPrimaryMetrics().getByText("3")).toBeVisible();
-  expect(readPrimaryMetrics().queryByText("실제 공고 열람 클릭 수")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { level: 1, name: "서비스 이용 지표" })).toBeVisible();
+  const section = readSection("주택 정보 조회");
+  expect(readMetric(section, "전체 주택 정보 조회")).toHaveTextContent("732건");
+  expect(readMetric(section, "공고 중이 아닌 주택 조회")).toHaveTextContent("388건");
+  expect(readMetric(section, "공고 중이 아닌 주택 조회 비율")).toHaveTextContent("53.0%");
 });
 
-test("실제 공고 열람 통계는 하단 상세 통계에 표시한다", async () => {
-  render(await AnalyticsPage({ searchParams: Promise.resolve({}) }));
+test("기존 비북마크 이용 지표와 단지별 순위를 유지한다", async () => {
+  await renderAnalyticsPage();
 
-  expect(screen.getByRole("heading", { name: "상세 통계" })).toBeVisible();
-  expect(screen.getByText("실제 공고 열람 클릭 수")).toBeVisible();
-  expect(screen.getByText("모집 중 공고의 공식 상세 페이지로 이동한 횟수입니다.")).toBeVisible();
-  expect(screen.getByText("조회수 대비 공고 확인 행동률")).toBeVisible();
-  expect(screen.getByText("단지별 공고 확인해보기 클릭 수")).toBeVisible();
+  const section = readSection("서비스 이용 현황");
+  expect(readMetric(section, "지도 조회수")).toHaveTextContent("10");
+  expect(readMetric(section, "공식 공고 열람")).toHaveTextContent("3");
+  expect(readMetric(section, "공고 확인해보기")).toHaveTextContent("3");
+  expect(readMetric(section, "조회수 대비 공고 확인 행동률")).toHaveTextContent("60.0%");
+  expect(screen.getByRole("heading", { name: "단지별 공고 확인해보기 클릭 수" })).toBeVisible();
+  expect(screen.getByText("location-a")).toBeVisible();
 });
 
-test("비모집 주택 실험의 고유 방문자 전환과 표본 판정을 표시한다", async () => {
-  readAllHomesBookmarkAddedEventCount.mockResolvedValue(7);
-  readExperimentFacts.mockResolvedValue(createExperimentFacts());
+test("날짜 필터를 유지하고 선택 범위로 대시보드를 조회한다", async () => {
+  await renderAnalyticsPage({ from: "2026-08-01", to: "2026-08-07" });
 
-  render(await AnalyticsPage({ searchParams: Promise.resolve({ period: "30d" }) }));
+  expectPresetLinks();
+  expectDateInputs();
+  expectRangeQuery();
+});
 
-  expect(screen.getByRole("heading", { name: "비모집 임대주택 탐색과 북마크" })).toBeVisible();
-  expect(screen.getByText("자격 방문자")).toBeVisible();
-  expect(readExperimentMetric("북마크 고유 사용자율").getByText("100.0%")).toBeVisible();
-  expect(readExperimentMetric("북마크 등록 횟수").getByText("7")).toBeVisible();
-  expect(screen.getByRole("status")).toHaveTextContent("판정 보류");
-  expect(readExperimentFacts).toHaveBeenCalledWith(
-    expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
-    "whole-housing-bookmark-v1",
+function expectPresetLinks() {
+  expect(screen.getByRole("link", { name: "최근 7일" })).toHaveAttribute(
+    "href",
+    "/admin/analytics?period=7d",
   );
-  expect(readAllHomesBookmarkAddedEventCount).toHaveBeenCalledWith(
-    expect.objectContaining({ from: expect.any(String), to: expect.any(String) }),
-    "whole-housing-bookmark-v1",
+  expect(screen.getByRole("link", { name: "최근 30일" })).toHaveAttribute(
+    "href",
+    "/admin/analytics?period=30d",
   );
+  expect(screen.getByRole("link", { name: "이번 달" })).toHaveAttribute(
+    "href",
+    "/admin/analytics?period=month",
+  );
+}
+
+function expectDateInputs() {
+  expect(screen.getByLabelText("시작일")).toHaveValue("2026-08-01");
+  expect(screen.getByLabelText("종료일")).toHaveValue("2026-08-07");
+}
+
+function expectRangeQuery() {
+  expect(mocks.readAnalyticsDashboard).toHaveBeenCalledWith({
+    from: "2026-08-01",
+    to: "2026-08-07",
+  });
+}
+
+test("연결된 화면에서 실험·북마크·판정과 설명 문단을 제거한다", async () => {
+  await renderAnalyticsPage();
+  const main = screen.getByRole("main");
+
+  expect(within(main).queryByText(/가설|북마크|판정|신뢰 하한/u)).not.toBeInTheDocument();
+  expect(within(main).queryByRole("alert")).not.toBeInTheDocument();
+  expect(within(main).queryByRole("status")).not.toBeInTheDocument();
+  expect(main.querySelector("p")).toBeNull();
 });
 
-function readPrimaryMetrics() {
-  const heading = screen.getByRole("heading", { name: "핵심 검증 지표" });
+test("분석 저장소가 없으면 연결 안내를 유지한다", async () => {
+  mocks.isAnalyticsStorageEnabled.mockReturnValue(false);
+  await renderAnalyticsPage();
+
+  expect(screen.getByRole("heading", { name: "분석 저장소를 연결해 주세요" })).toBeVisible();
+  expect(screen.getByText(/DATABASE_URL 또는 POSTGRES_URL/u)).toBeVisible();
+  expect(mocks.readAnalyticsDashboard).not.toHaveBeenCalled();
+});
+
+type SearchParameters = Readonly<{ from?: string; period?: string; to?: string }>;
+
+async function renderAnalyticsPage(searchParameters: SearchParameters = {}) {
+  const page = await AnalyticsPage({ searchParams: Promise.resolve(searchParameters) });
+  return render(page);
+}
+
+function readSection(title: string) {
+  const heading = screen.getByRole("heading", { name: title });
   return within(heading.closest("section") as HTMLElement);
 }
 
-function readExperimentMetric(label: string) {
-  const term = screen.getByText(label);
-  return within(term.closest("div") as HTMLElement);
+function readMetric(section: ReturnType<typeof within>, label: string) {
+  const term = section.getByText(label);
+  return term.closest("div") as HTMLElement;
 }
 
 function createDashboard() {
@@ -83,26 +116,10 @@ function createDashboard() {
     announcementInterestCount: 3,
     announcementOpenCount: 3,
     announcementRanks: [],
-    locationRanks: [],
+    locationDetailViewCount: 732,
+    locationRanks: [{ subjectId: "location-a", total: 2 }],
+    noOpenNoticeLocationDetailViewCount: 388,
+    noOpenNoticeLocationDetailViewRate: 53,
     pageViewCount: 10,
-  };
-}
-
-function createExperimentFacts() {
-  return [
-    createExperimentFact("EXPERIMENT_ELIGIBLE", "SITE", "all"),
-    createExperimentFact("BOOKMARK_ADDED", "LOCATION", "location-a"),
-  ];
-}
-
-function createExperimentFact(eventKind: string, subjectKind: string, subjectId: string) {
-  return {
-    eventKind,
-    experimentKey: "whole-housing-bookmark-v1",
-    metricDate: "2026-08-14",
-    subjectId,
-    subjectKind,
-    variant: "ALL_HOMES",
-    visitorHash: "visitor-a",
   };
 }
