@@ -9,6 +9,7 @@ import {
 } from "@/domain/announcement-analytics";
 
 import { createAnalyticsCounterRepository } from "./analytics-counter-repository";
+import { initializeExperimentAnalyticsStorage } from "./experiment-event-service";
 
 const repository = createAnalyticsCounterRepository();
 
@@ -34,7 +35,7 @@ export function purgeExpiredAnalyticsCounters() {
 }
 
 export function initializeAnalyticsStorage() {
-  return repository.initialize();
+  return Promise.all([repository.initialize(), initializeExperimentAnalyticsStorage()]);
 }
 
 export function isAnalyticsStorageEnabled() {

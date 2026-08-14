@@ -72,6 +72,15 @@ test("도시, 공급유형, 검색 조건을 모두 만족해야 한다", () => 
   expect(result.map(readIdentifier)).toEqual(["seongnam-mixed"]);
 });
 
+test("위치 식별자 필터는 저장된 주택만 남긴다", () => {
+  const result = filterMapLocations(LOCATIONS, {
+    ...EMPTY_FILTER,
+    locationIdentifiers: ["yongin-happy", "seongnam-mixed"],
+  });
+
+  expect(result.map(readIdentifier)).toEqual(["yongin-happy", "seongnam-mixed"]);
+});
+
 test("데이터에 실제 존재하는 공급유형만 정해진 표시 순서로 제공한다", () => {
   expect(createAvailableCategories(LOCATIONS)).toEqual([
     "NATIONAL_RENTAL",

@@ -5,6 +5,7 @@ import type {
   PublicRentalLocation,
   PublicRentalMunicipality,
 } from "@/domain/public-rental";
+import { isPublicRentalSnapshotFresh } from "@/domain/public-rental";
 
 import { MapLocationDetail } from "./map-location-detail";
 import {
@@ -19,6 +20,9 @@ type LocationSelectionHandler = (locationId: string) => void;
 export type MapLocationPanelProperties = Readonly<{
   availableCategories: readonly PublicRentalLegalCategory[];
   availableMunicipalities: readonly PublicRentalMunicipality[];
+  bookmarkedLocationIds?: readonly string[];
+  bookmarkedOnly?: boolean;
+  bookmarkMessage?: string;
   categories: readonly PublicRentalLegalCategory[];
   clustered?: boolean;
   expanded: boolean;
@@ -27,6 +31,8 @@ export type MapLocationPanelProperties = Readonly<{
   locations: readonly PublicRentalLocation[];
   municipality: MunicipalityFilter;
   onCategoryToggle: (category: PublicRentalLegalCategory) => void;
+  onBookmarkedOnlyChange?: (bookmarkedOnly: boolean) => void;
+  onBookmarkToggle?: (locationId: string) => void;
   onExpandedToggle: () => void;
   onMunicipalityChange: (municipality: MunicipalityFilter) => void;
   onQueryChange: (query: string) => void;
@@ -93,7 +99,12 @@ function PanelBody(properties: MapLocationPanelProperties) {
   return (
     <div className={createPanelBodyClass(properties.expanded)}>
       <MapFilters {...properties} />
-      <MapLocationDetail location={properties.selectedLocation} />
+      <MapLocationDetail
+        bookmarked={isBookmarked(properties, properties.selectedLocationId)}
+        bookmarkMessage={properties.bookmarkMessage}
+        location={properties.selectedLocation}
+        onBookmarkToggle={properties.onBookmarkToggle}
+      />
       <LocationList {...properties} />
     </div>
   );
@@ -104,9 +115,24 @@ function MapFilters(properties: MapLocationPanelProperties) {
     <section aria-label="임대주택 필터" className="border-b border-slate-200 p-4">
       <MunicipalityFilterControl {...properties} />
       <CategoryFilterControl {...properties} />
+      <BookmarkedOnlyControl {...properties} />
       <SearchControl {...properties} />
       <ResetFilterButton {...properties} />
     </section>
+  );
+}
+
+function BookmarkedOnlyControl(properties: MapLocationPanelProperties) {
+  if (!properties.onBookmarkedOnlyChange) return null;
+  return (
+    <label className="mt-4 flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700">
+      <input
+        checked={properties.bookmarkedOnly ?? false}
+        onChange={(event) => properties.onBookmarkedOnlyChange?.(event.currentTarget.checked)}
+        type="checkbox"
+      />
+      저장한 주택만 보기
+    </label>
   );
 }
 
@@ -243,6 +269,7 @@ function LocationList(properties: MapLocationPanelProperties) {
         <LocationListItem
           key={location.id}
           location={location}
+          bookmarked={isBookmarked(properties, location.id)}
           onSelect={properties.onSelect}
           selected={location.id === properties.selectedLocationId}
         />
@@ -274,6 +301,7 @@ function ClusteredLocationList() {
 }
 
 function LocationListItem(properties: {
+  bookmarked: boolean;
   location: PublicRentalLocation;
   onSelect: LocationSelectionHandler;
   selected: boolean;
@@ -287,13 +315,19 @@ function LocationListItem(properties: {
         onClick={() => properties.onSelect(properties.location.id)}
         type="button"
       >
-        <LocationListItemContent location={properties.location} />
+        <LocationListItemContent
+          bookmarked={properties.bookmarked}
+          location={properties.location}
+        />
       </button>
     </li>
   );
 }
 
-function LocationListItemContent({ location }: Readonly<{ location: PublicRentalLocation }>) {
+function LocationListItemContent({
+  bookmarked,
+  location,
+}: Readonly<{ bookmarked: boolean; location: PublicRentalLocation }>) {
   return (
     <>
       <span className="block font-semibold text-slate-950">{location.name}</span>
@@ -301,14 +335,33 @@ function LocationListItemContent({ location }: Readonly<{ location: PublicRental
         {createLegalCategoryText(location.legalCategories)}
       </span>
       <RecruitmentBadge location={location} />
+      <BookmarkBadge bookmarked={bookmarked} />
       <span className="mt-1 block text-xs leading-5 text-slate-600">{location.roadAddress}</span>
     </>
   );
 }
 
 function RecruitmentBadge({ location }: Readonly<{ location: PublicRentalLocation }>) {
-  if (!location.recruitmentNotices || location.recruitmentNotices.length === 0) return null;
-  return <span className="mt-1 inline-block text-xs font-semibold text-amber-700">모집 중</span>;
+  if (location.recruitmentNotices?.length) {
+    return (
+      <span className="mt-1 inline-block text-xs font-semibold text-amber-700">
+        수집 시 모집 중
+      </span>
+    );
+  }
+  return <span className="mt-1 block text-xs text-slate-500">수집 시 모집공고 없음</span>;
+}
+
+function BookmarkBadge({ bookmarked }: Readonly<{ bookmarked: boolean }>) {
+  if (!bookmarked) return null;
+  return (
+    <span className="ml-2 mt-1 inline-block text-xs font-semibold text-emerald-700">저장됨</span>
+  );
+}
+
+function isBookmarked(properties: MapLocationPanelProperties, locationId: string | undefined) {
+  if (!locationId) return false;
+  return properties.bookmarkedLocationIds?.includes(locationId) ?? false;
 }
 
 function SnapshotNotice({
@@ -317,7 +370,17 @@ function SnapshotNotice({
 }: Readonly<{ generatedAt?: string; status?: "partial" | "verified" }>) {
   if (!generatedAt || !status) return null;
   if (status === "partial") return <PartialSnapshotNotice generatedAt={generatedAt} />;
+  if (!isPublicRentalSnapshotFresh(generatedAt))
+    return <StaleSnapshotNotice generatedAt={generatedAt} />;
   return <p className="mt-2 text-xs text-slate-500">{createSnapshotDateLabel(generatedAt)}</p>;
+}
+
+function StaleSnapshotNotice({ generatedAt }: Readonly<{ generatedAt: string }>) {
+  return (
+    <p className="mt-2 text-xs leading-5 text-rose-700" role="alert">
+      모집 상태 갱신 필요 · {createSnapshotDateLabel(generatedAt)}
+    </p>
+  );
 }
 
 function PartialSnapshotNotice({ generatedAt }: Readonly<{ generatedAt: string }>) {
@@ -404,6 +467,7 @@ function readInputValue(event: ChangeEvent<HTMLInputElement>) {
 }
 
 function hasActiveFilter(properties: MapLocationPanelProperties) {
+  if (properties.bookmarkedOnly) return true;
   if (properties.municipality !== "ALL") return true;
   if (properties.categories.length > 0) return true;
   return properties.query.length > 0;

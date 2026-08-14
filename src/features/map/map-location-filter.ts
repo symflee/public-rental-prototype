@@ -9,6 +9,7 @@ export type MunicipalityFilter = "ALL" | PublicRentalMunicipality;
 
 export type MapLocationFilter = Readonly<{
   categories: readonly PublicRentalLegalCategory[];
+  locationIdentifiers?: readonly string[];
   municipality: MunicipalityFilter;
   query: string;
 }>;
@@ -48,9 +49,18 @@ export function toggleCategory(
 }
 
 function matchesFilter(location: PublicRentalLocation, filter: MapLocationFilter) {
+  if (!matchesLocationIdentifiers(location, filter.locationIdentifiers)) return false;
   if (!matchesMunicipality(location, filter.municipality)) return false;
   if (!matchesCategory(location, filter.categories)) return false;
   return matchesQuery(location, filter.query);
+}
+
+function matchesLocationIdentifiers(
+  location: PublicRentalLocation,
+  locationIdentifiers: readonly string[] | undefined,
+) {
+  if (!locationIdentifiers) return true;
+  return locationIdentifiers.includes(location.id);
 }
 
 function matchesMunicipality(location: PublicRentalLocation, municipality: MunicipalityFilter) {

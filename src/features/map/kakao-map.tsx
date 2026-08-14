@@ -10,7 +10,7 @@ import type {
   PublicRentalLocation,
   PublicRentalMunicipality,
 } from "@/domain/public-rental";
-import { createGyeonggiMunicipalities } from "@/domain/public-rental";
+import { createGyeonggiMunicipalities, isPublicRentalSnapshotFresh } from "@/domain/public-rental";
 import {
   renderKakaoMap,
   type KakaoMapController,
@@ -31,6 +31,12 @@ import {
 } from "./map-location-filter";
 import { usePublicRentalMapData, type PublicRentalMapData } from "./public-rental-map-data";
 import { usePageViewAnalytics } from "./use-page-view-analytics";
+import { recordBookmarkChange } from "./experiment-event-client";
+import { useLocationDetailAnalytics } from "./use-location-detail-analytics";
+import {
+  usePublicRentalBookmarks,
+  type BookmarkChangeHandler,
+} from "./use-public-rental-bookmarks";
 
 const SEONGNAM_INITIAL_VIEW = {
   latitude: 37.420035,
@@ -65,6 +71,7 @@ const ALL_GYEONGGI_MUNICIPALITIES = createGyeonggiMunicipalities();
 type KakaoMapProperties = Readonly<{
   javascriptKey?: string;
   locations?: readonly PublicRentalLocation[];
+  onBookmarkChange?: BookmarkChangeHandler;
 }>;
 
 type MapState = Readonly<{
@@ -73,27 +80,34 @@ type MapState = Readonly<{
 }>;
 
 type ExplorerState = Readonly<{
+  bookmarkedOnly: boolean;
   categories: readonly PublicRentalLegalCategory[];
   expanded: boolean;
   fitRevision: number;
   municipality: MunicipalityFilter;
   pendingLocationIds: readonly string[] | undefined;
   query: string;
-  selectedLocationId: string | undefined;
+  selectedLocation: PublicRentalLocation | undefined;
   viewportLocationIds: readonly string[] | undefined;
 }>;
 
 type ExplorerActions = Readonly<{
   applyViewport: () => void;
+  changeBookmarkedOnly: (bookmarkedOnly: boolean) => void;
   changeMunicipality: (municipality: MunicipalityFilter) => void;
   changeQuery: (query: string) => void;
   clearViewport: () => void;
   reportViewport: (locationIds: readonly string[]) => void;
   resetFilters: () => void;
-  selectLocation: (locationId: string) => void;
+  selectLocation: (location: PublicRentalLocation) => void;
   toggleCategory: (category: PublicRentalLegalCategory) => void;
   toggleExpanded: () => void;
 }>;
+
+type ExplorerFilterState = Pick<
+  ExplorerState,
+  "bookmarkedOnly" | "categories" | "municipality" | "query"
+>;
 
 type ExplorerModel = Readonly<{
   actions: ExplorerActions;
@@ -115,13 +129,14 @@ type LocatedPublicRentalLocation = PublicRentalLocation &
   Readonly<{ coordinate: NonNullable<PublicRentalLocation["coordinate"]> }>;
 
 const INITIAL_EXPLORER_STATE: ExplorerState = {
+  bookmarkedOnly: false,
   categories: [],
   expanded: false,
   fitRevision: 0,
   municipality: "ALL",
   pendingLocationIds: undefined,
   query: "",
-  selectedLocationId: undefined,
+  selectedLocation: undefined,
   viewportLocationIds: undefined,
 };
 
@@ -131,29 +146,65 @@ const LOAD_FAILED_STATE: MapState = { reason: "load-failed", status: "error" };
 const MISSING_KEY_STATE: MapState = { reason: "missing-key", status: "error" };
 
 export function KakaoMap(properties: KakaoMapProperties) {
+  const model = useKakaoMapModel(properties);
+  return <KakaoMapLayout {...model.layout} containerReference={model.containerReference} />;
+}
+
+function useKakaoMapModel(properties: KakaoMapProperties) {
+  const references = useMapReferences();
+  const [viewport, setViewport] = useState<PublicRentalMapViewport | undefined>(undefined);
+  const bookmarkState = useConfiguredBookmarks(properties);
+  const explorer = useMapExplorer(properties.locations, viewport, bookmarkState.bookmarks.values);
+  useLocationDetailAnalytics(explorer.selectedLocation);
+  return useKakaoMapPresentation(properties, references, explorer, bookmarkState, setViewport);
+}
+
+function useMapReferences(): MapReferences {
   const containerReference = useRef<HTMLDivElement>(null);
   const controllerReference = useRef<KakaoMapController | undefined>(undefined);
-  const [viewport, setViewport] = useState<PublicRentalMapViewport | undefined>(undefined);
-  const references = useMemo(
+  return useMemo(
     () => ({ containerReference, controllerReference }),
     [containerReference, controllerReference],
   );
-  const explorer = useMapExplorer(properties.locations, viewport);
-  const interactions = useMapInteractions(explorer, controllerReference);
-  const onViewportChanged = useViewportChangeHandler(controllerReference, setViewport);
+}
+
+function useConfiguredBookmarks(properties: KakaoMapProperties) {
+  const bookmarkChange = properties.onBookmarkChange ?? recordBookmarkChange;
+  return usePublicRentalBookmarks(bookmarkChange);
+}
+
+function useExplorerMarkers(explorer: ExplorerModel, interactions: MapInteractions) {
   const locationMarkers = useMarkers(explorer.displayedLocations, explorer.actions.selectLocation);
   const clusterMarkers = useClusterMarkers(explorer.mapData.clusters, interactions.onClusterSelect);
-  const markers = useMemo(
-    () => [...locationMarkers, ...clusterMarkers],
-    [clusterMarkers, locationMarkers],
-  );
+  return useMemo(() => [...locationMarkers, ...clusterMarkers], [clusterMarkers, locationMarkers]);
+}
+
+function useKakaoMapPresentation(
+  properties: KakaoMapProperties,
+  references: MapReferences,
+  explorer: ExplorerModel,
+  bookmarkState: ReturnType<typeof usePublicRentalBookmarks>,
+  setViewport: Dispatch<SetStateAction<PublicRentalMapViewport | undefined>>,
+) {
+  const interactions = useMapInteractions(explorer, references.controllerReference);
+  const onViewportChanged = useViewportChangeHandler(references.controllerReference, setViewport);
+  const markers = useExplorerMarkers(explorer, interactions);
   const mapState = useMapRuntime(
     createRuntimeInput(properties, explorer, markers, onViewportChanged),
     references,
   );
-  usePageViewAnalytics(mapState.status);
-  const layout = createLayoutProperties(explorer, mapState, interactions);
-  return <KakaoMapLayout {...layout} containerReference={containerReference} />;
+  usePageViewAnalytics(mapState.status, isExplorationReady(properties.locations, explorer.mapData));
+  const layout = createLayoutProperties(explorer, mapState, interactions, bookmarkState);
+  return { containerReference: references.containerReference, layout };
+}
+
+function isExplorationReady(
+  staticLocations: readonly PublicRentalLocation[] | undefined,
+  mapData: PublicRentalMapData,
+) {
+  if (staticLocations !== undefined) return true;
+  if (!mapData.generatedAt || !mapData.status) return false;
+  return isPublicRentalSnapshotFresh(mapData.generatedAt);
 }
 
 type MapRuntimeInput = Readonly<{
@@ -346,18 +397,21 @@ function useMapRelayout(
 function useMapExplorer(
   staticLocations: readonly PublicRentalLocation[] | undefined,
   viewport: PublicRentalMapViewport | undefined,
+  bookmarkedLocationIds: readonly string[],
 ): ExplorerModel {
   const [state, setState] = useState<ExplorerState>(INITIAL_EXPLORER_STATE);
   const actions = useMemo(() => createExplorerActions(setState), []);
+  const { bookmarkedOnly, categories, municipality, query } = state;
   const filter = useMemo(
-    () => createMapFilter(state.categories, state.municipality, state.query),
-    [state.categories, state.municipality, state.query],
+    () =>
+      createMapFilter(bookmarkedLocationIds, { bookmarkedOnly, categories, municipality, query }),
+    [bookmarkedLocationIds, bookmarkedOnly, categories, municipality, query],
   );
   const mapData = usePublicRentalMapData(staticLocations, viewport, filter);
   const locations = mapData.locations;
-  const filtered = useFilteredLocations(locations, state);
+  const filtered = useFilteredLocations(locations, state, bookmarkedLocationIds);
   const displayed = useViewportLocations(filtered, state.viewportLocationIds);
-  const selectedLocation = findLocation(displayed, state.selectedLocationId);
+  const selectedLocation = readSelectedLocation(displayed, state.selectedLocation);
   const pendingLocationCount = readPendingLocationCount(filtered, displayed, state);
   const availableCategories = readAvailableCategories(locations);
   const availableMunicipalities = readAvailableMunicipalities(locations);
@@ -385,21 +439,32 @@ function readAvailableMunicipalities(locations: readonly PublicRentalLocation[])
   return ALL_GYEONGGI_MUNICIPALITIES;
 }
 
-function createMapFilter(
-  categories: readonly PublicRentalLegalCategory[],
-  municipality: MunicipalityFilter,
-  query: string,
-) {
-  return { categories, municipality, query };
+function createMapFilter(bookmarkedLocationIds: readonly string[], state: ExplorerFilterState) {
+  const filter = {
+    categories: state.categories,
+    municipality: state.municipality,
+    query: state.query,
+  };
+  if (!state.bookmarkedOnly) return filter;
+  return { ...filter, locationIdentifiers: bookmarkedLocationIds };
 }
 
-function useFilteredLocations(locations: readonly PublicRentalLocation[], state: ExplorerState) {
+function useFilteredLocations(
+  locations: readonly PublicRentalLocation[],
+  state: ExplorerState,
+  bookmarkedLocationIds: readonly string[],
+) {
+  const bookmarkedOnly = state.bookmarkedOnly;
   const categories = state.categories;
   const municipality = state.municipality;
   const query = state.query;
   return useMemo(
-    () => filterMapLocations(locations, { categories, municipality, query }),
-    [categories, locations, municipality, query],
+    () =>
+      filterMapLocations(
+        locations,
+        createMapFilter(bookmarkedLocationIds, { bookmarkedOnly, categories, municipality, query }),
+      ),
+    [bookmarkedLocationIds, bookmarkedOnly, categories, locations, municipality, query],
   );
 }
 
@@ -437,6 +502,7 @@ function createExplorerModel(
 function createExplorerActions(setState: Dispatch<SetStateAction<ExplorerState>>): ExplorerActions {
   return {
     applyViewport: () => setState(applyPendingViewport),
+    changeBookmarkedOnly: (value) => setState((state) => changeBookmarkedOnly(state, value)),
     changeMunicipality: (value) => setState((state) => changeMunicipality(state, value)),
     changeQuery: (value) => setState((state) => changeQuery(state, value)),
     clearViewport: () => setState(clearViewport),
@@ -446,6 +512,10 @@ function createExplorerActions(setState: Dispatch<SetStateAction<ExplorerState>>
     toggleCategory: (value) => setState((state) => changeCategory(state, value)),
     toggleExpanded: () => setState(toggleExpanded),
   };
+}
+
+function changeBookmarkedOnly(state: ExplorerState, bookmarkedOnly: boolean) {
+  return resetSpatialFilter({ ...state, bookmarkedOnly });
 }
 
 function changeMunicipality(state: ExplorerState, municipality: MunicipalityFilter) {
@@ -462,7 +532,13 @@ function changeCategory(state: ExplorerState, category: PublicRentalLegalCategor
 }
 
 function resetFilters(state: ExplorerState): ExplorerState {
-  return resetSpatialFilter({ ...state, categories: [], municipality: "ALL", query: "" });
+  return resetSpatialFilter({
+    ...state,
+    bookmarkedOnly: false,
+    categories: [],
+    municipality: "ALL",
+    query: "",
+  });
 }
 
 function resetSpatialFilter(state: ExplorerState): ExplorerState {
@@ -470,7 +546,7 @@ function resetSpatialFilter(state: ExplorerState): ExplorerState {
     ...state,
     fitRevision: state.fitRevision + 1,
     pendingLocationIds: undefined,
-    selectedLocationId: undefined,
+    selectedLocation: undefined,
     viewportLocationIds: undefined,
   };
 }
@@ -484,7 +560,7 @@ function applyPendingViewport(state: ExplorerState): ExplorerState {
   return {
     ...state,
     pendingLocationIds: undefined,
-    selectedLocationId: readViewportSelection(state),
+    selectedLocation: readViewportSelection(state),
     viewportLocationIds: state.pendingLocationIds,
   };
 }
@@ -498,8 +574,11 @@ function clearViewport(state: ExplorerState): ExplorerState {
   };
 }
 
-function selectLocation(state: ExplorerState, selectedLocationId: string): ExplorerState {
-  return { ...state, expanded: true, selectedLocationId };
+function selectLocation(
+  state: ExplorerState,
+  selectedLocation: PublicRentalLocation,
+): ExplorerState {
+  return { ...state, expanded: true, selectedLocation };
 }
 
 function toggleExpanded(state: ExplorerState): ExplorerState {
@@ -535,28 +614,35 @@ function hasSameLocationIds(
   return first.every((location) => secondIdentifiers.has(location.id));
 }
 
-function findLocation(locations: readonly PublicRentalLocation[], locationId: string | undefined) {
-  if (!locationId) return undefined;
+function readSelectedLocation(
+  locations: readonly PublicRentalLocation[],
+  selectedLocation: PublicRentalLocation | undefined,
+) {
+  if (!selectedLocation) return undefined;
+  return findLocation(locations, selectedLocation.id) ?? selectedLocation;
+}
+
+function findLocation(locations: readonly PublicRentalLocation[], locationId: string) {
   return locations.find((location) => location.id === locationId);
 }
 
 function useMarkers(
   locations: readonly PublicRentalLocation[],
-  onSelect: (locationId: string) => void,
+  onSelect: (location: PublicRentalLocation) => void,
 ) {
   return useMemo(() => createMarkers(locations, onSelect), [locations, onSelect]);
 }
 
 function createMarkers(
   locations: readonly PublicRentalLocation[],
-  onSelect: (locationId: string) => void,
+  onSelect: (location: PublicRentalLocation) => void,
 ) {
   return locations.filter(hasCoordinate).map((location) => createMarker(location, onSelect));
 }
 
 function createMarker(
   location: LocatedPublicRentalLocation,
-  onSelect: (locationId: string) => void,
+  onSelect: (location: PublicRentalLocation) => void,
 ): MapMarkerConfiguration {
   return {
     categories: location.legalCategories,
@@ -564,7 +650,7 @@ function createMarker(
     latitude: location.coordinate.latitude,
     locationId: location.id,
     longitude: location.coordinate.longitude,
-    onClick: onSelect,
+    onClick: () => onSelect(location),
     title: location.name,
   };
 }
@@ -616,7 +702,9 @@ function useMapInteractions(
   controllerReference: RefObject<KakaoMapController | undefined>,
 ): MapInteractions {
   const onListSelect = (locationId: string) => {
-    explorer.actions.selectLocation(locationId);
+    const location = findLocation(explorer.displayedLocations, locationId);
+    if (!location) return;
+    explorer.actions.selectLocation(location);
     controllerReference.current?.focusMarker(locationId, readMapPadding(true));
   };
   const onZoomIn = () => controllerReference.current?.zoomIn();
@@ -630,9 +718,10 @@ function createLayoutProperties(
   explorer: ExplorerModel,
   mapState: MapState,
   interactions: MapInteractions,
+  bookmarkState: ReturnType<typeof usePublicRentalBookmarks>,
 ): MapLayoutProperties {
   const controls = createControlProperties(explorer, mapState, interactions);
-  const panel = createPanelProperties(explorer, interactions);
+  const panel = createPanelProperties(explorer, interactions, bookmarkState);
   return { controls, mapState, panel };
 }
 
@@ -655,10 +744,14 @@ function createControlProperties(
 function createPanelProperties(
   explorer: ExplorerModel,
   interactions: MapInteractions,
+  bookmarkState: ReturnType<typeof usePublicRentalBookmarks>,
 ): MapLocationPanelProperties {
   return {
     availableCategories: explorer.availableCategories,
     availableMunicipalities: explorer.availableMunicipalities,
+    bookmarkedLocationIds: bookmarkState.bookmarks.values,
+    bookmarkedOnly: explorer.state.bookmarkedOnly,
+    bookmarkMessage: readBookmarkMessage(bookmarkState),
     categories: explorer.state.categories,
     expanded: explorer.state.expanded,
     clustered: explorer.mapData.mode === "clusters",
@@ -666,6 +759,8 @@ function createPanelProperties(
     locationCount: readPanelLocationCount(explorer),
     locations: explorer.displayedLocations,
     municipality: explorer.state.municipality,
+    onBookmarkedOnlyChange: explorer.actions.changeBookmarkedOnly,
+    onBookmarkToggle: bookmarkState.toggleBookmark,
     onCategoryToggle: explorer.actions.toggleCategory,
     onExpandedToggle: explorer.actions.toggleExpanded,
     onMunicipalityChange: explorer.actions.changeMunicipality,
@@ -677,6 +772,12 @@ function createPanelProperties(
     selectedLocationId: explorer.selectedLocationId,
     status: explorer.mapData.status,
   };
+}
+
+function readBookmarkMessage(bookmarkState: ReturnType<typeof usePublicRentalBookmarks>) {
+  if (bookmarkState.limitReached) return "주택은 최대 100곳까지 저장할 수 있습니다.";
+  if (bookmarkState.storageFailed) return "이 브라우저에 주택을 저장하지 못했습니다.";
+  return undefined;
 }
 
 function readPanelLocationCount(explorer: ExplorerModel) {
@@ -801,9 +902,9 @@ function readMapViewport(controller: KakaoMapController | undefined) {
 }
 
 function readViewportSelection(state: ExplorerState) {
-  const selectedLocationId = state.selectedLocationId;
-  if (!selectedLocationId) return undefined;
-  if (state.pendingLocationIds?.includes(selectedLocationId)) return selectedLocationId;
+  const selectedLocation = state.selectedLocation;
+  if (!selectedLocation) return undefined;
+  if (state.pendingLocationIds?.includes(selectedLocation.id)) return selectedLocation;
   return undefined;
 }
 

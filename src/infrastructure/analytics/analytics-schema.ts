@@ -11,3 +11,49 @@ export const ANALYTICS_SCHEMA_STATEMENTS = [
   `,
   `CREATE INDEX IF NOT EXISTS analytics_daily_counters_date_index ON analytics_daily_counters (metric_date)`,
 ] as const;
+
+export const EXPERIMENT_ANALYTICS_SCHEMA_STATEMENTS = [
+  `
+    CREATE TABLE IF NOT EXISTS analytics_experiment_events (
+      event_id uuid PRIMARY KEY,
+      metric_date date NOT NULL,
+      experiment_key text NOT NULL,
+      variant text NOT NULL CHECK (variant IN ('OPEN_NOTICES_ONLY', 'ALL_HOMES')),
+      visitor_hash text NOT NULL,
+      event_kind text NOT NULL CHECK (event_kind IN (
+        'EXPERIMENT_ELIGIBLE',
+        'NO_OPEN_NOTICE_LOCATION_VIEWED',
+        'BOOKMARK_ADDED',
+        'BOOKMARK_REMOVED',
+        'OPEN_ANNOUNCEMENT_VIEWED'
+      )),
+      subject_kind text NOT NULL CHECK (subject_kind IN ('SITE', 'LOCATION')),
+      subject_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `,
+  `CREATE INDEX IF NOT EXISTS analytics_experiment_events_date_index ON analytics_experiment_events (metric_date)`,
+  `
+    CREATE TABLE IF NOT EXISTS analytics_experiment_facts (
+      metric_date date NOT NULL,
+      experiment_key text NOT NULL,
+      variant text NOT NULL CHECK (variant IN ('OPEN_NOTICES_ONLY', 'ALL_HOMES')),
+      visitor_hash text NOT NULL,
+      event_kind text NOT NULL CHECK (event_kind IN (
+        'EXPERIMENT_ELIGIBLE',
+        'NO_OPEN_NOTICE_LOCATION_VIEWED',
+        'BOOKMARK_ADDED',
+        'BOOKMARK_REMOVED',
+        'OPEN_ANNOUNCEMENT_VIEWED'
+      )),
+      subject_kind text NOT NULL CHECK (subject_kind IN ('SITE', 'LOCATION')),
+      subject_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (
+        metric_date, experiment_key, variant, visitor_hash,
+        event_kind, subject_kind, subject_id
+      )
+    )
+  `,
+  `CREATE INDEX IF NOT EXISTS analytics_experiment_facts_date_key_index ON analytics_experiment_facts (metric_date, experiment_key)`,
+] as const;

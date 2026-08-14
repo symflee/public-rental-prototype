@@ -17,10 +17,25 @@ type CategorySummary = Readonly<{
 }>;
 
 export function MapLocationDetail({
+  bookmarked = false,
   location,
-}: Readonly<{ location: PublicRentalLocation | undefined }>) {
+  onBookmarkToggle,
+  bookmarkMessage,
+}: Readonly<{
+  bookmarked?: boolean;
+  bookmarkMessage?: string;
+  location: PublicRentalLocation | undefined;
+  onBookmarkToggle?: (locationId: string) => void;
+}>) {
   if (!location) return <EmptyLocationDetail />;
-  return <LocationDetail location={location} />;
+  return (
+    <LocationDetail
+      bookmarked={bookmarked}
+      bookmarkMessage={bookmarkMessage}
+      location={location}
+      onBookmarkToggle={onBookmarkToggle}
+    />
+  );
 }
 
 export function createMapMarkerDetail(location: PublicRentalLocation): MapMarkerDetail {
@@ -38,15 +53,39 @@ function EmptyLocationDetail() {
   );
 }
 
-function LocationDetail({ location }: Readonly<{ location: PublicRentalLocation }>) {
+type LocationDetailProperties = Readonly<{
+  bookmarked: boolean;
+  bookmarkMessage?: string;
+  location: PublicRentalLocation;
+  onBookmarkToggle?: (locationId: string) => void;
+}>;
+
+function LocationDetail(properties: LocationDetailProperties) {
   return (
     <section
       aria-label="선택한 임대주택 상세"
       className="border-t border-slate-200 p-4"
       role="region"
     >
-      <h2 className="text-base font-bold text-slate-950">{location.name}</h2>
-      <LocationBadges location={location} />
+      <LocationSummary {...properties} />
+      <LocationInformation location={properties.location} />
+    </section>
+  );
+}
+
+function LocationSummary(properties: LocationDetailProperties) {
+  return (
+    <>
+      <h2 className="text-base font-bold text-slate-950">{properties.location.name}</h2>
+      <LocationBadges location={properties.location} />
+      <BookmarkControl {...properties} />
+    </>
+  );
+}
+
+function LocationInformation({ location }: Readonly<{ location: PublicRentalLocation }>) {
+  return (
+    <>
       <LocationFacts location={location} />
       <CategorySummaries location={location} />
       <PropertyNames location={location} />
@@ -55,8 +94,43 @@ function LocationDetail({ location }: Readonly<{ location: PublicRentalLocation 
         notices={location.recruitmentNotices ?? []}
       />
       <SourceLinks sources={location.sourceRecords} />
-    </section>
+    </>
   );
+}
+
+function BookmarkControl(properties: LocationDetailProperties) {
+  if (!properties.onBookmarkToggle) return null;
+  if (properties.location.recruitmentNotices?.length && !properties.bookmarked) return null;
+  return (
+    <div className="mt-3">
+      <button
+        aria-pressed={properties.bookmarked}
+        className="rounded-lg border border-emerald-700 px-3 py-2 text-xs font-semibold text-emerald-800"
+        onClick={() => properties.onBookmarkToggle?.(properties.location.id)}
+        type="button"
+      >
+        {readBookmarkButtonText(properties.bookmarked)}
+      </button>
+      <p className="mt-2 text-xs text-slate-500">
+        이 브라우저에만 저장되며 모집 알림은 아직 제공하지 않습니다.
+      </p>
+      <BookmarkMessage message={properties.bookmarkMessage} />
+    </div>
+  );
+}
+
+function BookmarkMessage({ message }: Readonly<{ message?: string }>) {
+  if (!message) return null;
+  return (
+    <p className="mt-2 text-xs text-rose-700" role="alert">
+      {message}
+    </p>
+  );
+}
+
+function readBookmarkButtonText(bookmarked: boolean) {
+  if (bookmarked) return "저장 해제";
+  return "이 주택 저장";
 }
 
 function LocationBadges({ location }: Readonly<{ location: PublicRentalLocation }>) {
@@ -67,8 +141,16 @@ function LocationBadges({ location }: Readonly<{ location: PublicRentalLocation 
         className="bg-emerald-50 text-emerald-700"
         text={createLegalCategoryText(location.legalCategories)}
       />
+      <RecruitmentStatusBadge location={location} />
     </div>
   );
+}
+
+function RecruitmentStatusBadge({ location }: Readonly<{ location: PublicRentalLocation }>) {
+  if (location.recruitmentNotices?.length) {
+    return <Badge className="bg-amber-50 text-amber-800" text="수집 시 모집 중" />;
+  }
+  return <Badge className="bg-slate-100 text-slate-600" text="수집 시 모집공고 없음" />;
 }
 
 function Badge({ className, text }: Readonly<{ className: string; text: string }>) {
@@ -142,7 +224,7 @@ function RecruitmentNoticeLinks({
   if (notices.length === 0) return <RecruitmentInterestButton locationId={locationId} />;
   return (
     <div className="mt-4">
-      <h3 className="text-xs font-semibold text-slate-500">모집 중 공고</h3>
+      <h3 className="text-xs font-semibold text-slate-500">수집 시 모집 중 공고</h3>
       <ul className="mt-2 space-y-2">
         {notices.map((notice) => (
           <RecruitmentNoticeLink key={notice.id} locationId={locationId} notice={notice} />

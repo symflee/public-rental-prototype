@@ -78,6 +78,21 @@ test("시군, 공급 유형, 검색어와 지도 영역을 함께 적용한다",
   expect(result.locations[0]?.name).toBe("용인 행복주택");
 });
 
+test("위치 식별자를 지정하면 넓은 지도에서도 저장된 주택만 집계한다", () => {
+  const locations = createSpacedLocations();
+  const result = createPublicRentalMapResult(
+    locations,
+    createRequest(VIEWPORT, {
+      categories: [],
+      locationIdentifiers: ["location-1"],
+      municipality: "ALL",
+      query: "",
+    }),
+  );
+
+  expect(result.totalLocationCount).toBe(1);
+});
+
 function createRequest(
   viewport: typeof VIEWPORT,
   filter: PublicRentalMapFilter = { categories: [], municipality: "ALL", query: "" },

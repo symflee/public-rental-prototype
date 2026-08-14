@@ -243,6 +243,43 @@ test("목록을 선택하면 지도 핀과 상세를 같은 위치 ID로 연결�
   expect(readDetail()).toHaveTextContent("46.20㎡");
 });
 
+test("목록 선택 후 지도 응답이 클러스터로 바뀌어도 선택 상세를 유지한다", async () => {
+  controller.readViewport.mockReturnValue(createViewport(127.3));
+  vi.stubGlobal("fetch", createModeChangingMapFetch(LOCATIONS[0]));
+  render(<KakaoMap javascriptKey="javascript-key" />);
+
+  const locationButton = await screen.findByRole("button", { name: "판교 국민임대 선택" });
+  fireEvent.click(locationButton);
+  expect(readDetail()).toHaveTextContent("판교 국민임대");
+
+  controller.readViewport.mockReturnValue(createViewport(127.4));
+  act(() => readViewportChangedHandler()?.());
+  await waitFor(() => expect(readLatestReplacementIdentifiers()).toEqual(["cluster:3:2"]));
+  expect(readDetail()).toHaveTextContent("판교 국민임대");
+  expect(screen.getByRole("button", { name: "이 주택 저장" })).toBeVisible();
+});
+
+test("필터를 초기화하면 이전에 선택한 상세를 해제한다", () => {
+  render(<KakaoMap locations={LOCATIONS} />);
+  fireEvent.click(screen.getByRole("radio", { name: "성남" }));
+  fireEvent.click(screen.getByRole("button", { name: "판교 국민임대 선택" }));
+  expect(readDetail()).toHaveTextContent("판교 국민임대");
+
+  fireEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
+
+  expect(screen.queryByRole("region", { name: "선택한 임대주택 상세" })).not.toBeInTheDocument();
+});
+
+test("다른 위치를 선택하면 보존 중인 상세를 새 위치로 교체한다", () => {
+  render(<KakaoMap locations={LOCATIONS} />);
+  fireEvent.click(screen.getByRole("button", { name: "판교 국민임대 선택" }));
+
+  fireEvent.click(screen.getByRole("button", { name: "용인 행복주택 선택" }));
+
+  expect(readDetail()).toHaveTextContent("용인 행복주택");
+  expect(readDetail()).not.toHaveTextContent("판교 국민임대");
+});
+
 test("지도 핀을 선택하면 목록과 상세의 같은 위치가 선택된다", async () => {
   render(<KakaoMap javascriptKey="javascript-key" locations={LOCATIONS} />);
   await waitForMapReady();
@@ -397,4 +434,33 @@ function createClusterResponse() {
       status: "verified",
     }),
   );
+}
+
+function createModeChangingMapFetch(location: PublicRentalLocation) {
+  let mapRequestCount = 0;
+  return vi.fn(async (input: RequestInfo | URL) => {
+    if (!String(input).startsWith("/api/public-rentals?"))
+      return new Response(null, { status: 204 });
+    mapRequestCount += 1;
+    if (mapRequestCount === 1) return createLocationResponse(location);
+    return createClusterResponse();
+  });
+}
+
+function createLocationResponse(location: PublicRentalLocation) {
+  return new Response(
+    JSON.stringify({
+      generatedAt: "2026-07-29T12:00:00.000Z",
+      map: { clusters: [], locations: [location], mode: "locations", totalLocationCount: 1 },
+      status: "verified",
+    }),
+  );
+}
+
+function createViewport(east: number) {
+  return { east, height: 800, level: 6, north: 37.7, south: 37.1, west: 126.9, width: 1200 };
+}
+
+function readViewportChangedHandler() {
+  return renderKakaoMapMock.mock.calls[0]?.[2].onViewportChanged;
 }

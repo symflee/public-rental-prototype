@@ -69,6 +69,17 @@ test.describe("데스크톱 경기도 LH 임대주택 지도", () => {
     await expect(page.getByText("현재 이 단지에 등록된 모집 공고가 없습니다.")).toBeVisible();
     await expect(page.getByRole("link", { name: "개인정보처리방침" })).toBeVisible();
   });
+
+  test("공고 없는 주택을 저장하고 재방문 뒤에도 복원한다", async ({ page }) => {
+    await mockIndividualLocationData(page);
+    await openReadyMap(page);
+    await selectFirstListLocation(page);
+    const detail = readLocationDetail(page);
+    await detail.getByRole("button", { name: "이 주택 저장" }).click();
+    await expect(detail.getByRole("button", { name: "저장 해제" })).toBeVisible();
+    await expectBookmarkStorageDescription(detail);
+    await expectBookmarkRestored(page);
+  });
 });
 
 test.describe("모바일 경기도 LH 임대주택 지도", () => {
@@ -200,6 +211,19 @@ async function expectLocationCount(page: Page, count: number) {
   await expect(readExplorerPanel(page).getByText(`총 ${count}곳`, { exact: true })).toBeVisible();
 }
 
+async function expectBookmarkStorageDescription(detail: ReturnType<typeof readLocationDetail>) {
+  const description = "이 브라우저에만 저장되며 모집 알림은 아직 제공하지 않습니다.";
+  await expect(detail.getByText(description)).toBeVisible();
+}
+
+async function expectBookmarkRestored(page: Page) {
+  await openReadyMap(page);
+  await selectFirstListLocation(page);
+  await expect(readLocationDetail(page).getByRole("button", { name: "저장 해제" })).toBeVisible();
+  await page.getByRole("checkbox", { name: "저장한 주택만 보기" }).check();
+  await expectLocationCount(page, 1);
+}
+
 async function readLocationCount(page: Page) {
   const text = await readExplorerPanel(page)
     .getByText(/^총 \d+곳$/u)
@@ -230,6 +254,9 @@ async function mockIndividualLocationData(page: Page) {
   );
   await page.route("**/api/analytics/announcement-interest", (route) =>
     route.fulfill({ status: 204 }),
+  );
+  await page.route("**/api/analytics/experiment-events", (route) =>
+    route.fulfill({ body: JSON.stringify({ recorded: true }), contentType: "application/json" }),
   );
 }
 

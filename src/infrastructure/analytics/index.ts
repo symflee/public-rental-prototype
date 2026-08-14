@@ -20,5 +20,31 @@ export {
   recordAnnouncementOpen,
   recordPageView,
 } from "./analytics-counter-service";
-export { recordAnalyticsQuietly } from "./record-analytics";
-export { ANALYTICS_SCHEMA_STATEMENTS } from "./analytics-schema";
+export { recordAnalyticsQuietly, recordAnalyticsSafely } from "./record-analytics";
+export {
+  ANALYTICS_SCHEMA_STATEMENTS,
+  EXPERIMENT_ANALYTICS_SCHEMA_STATEMENTS,
+} from "./analytics-schema";
+export {
+  createExperimentEventRepository,
+  createExperimentEventRepositoryWithExecutor,
+  type ExperimentEventRepository,
+  type ExperimentSqlExecutor,
+} from "./experiment-event-repository";
+export {
+  initializeExperimentAnalyticsStorage,
+  isExperimentAnalyticsEnabled,
+  purgeExpiredExperimentEvents,
+  readAllHomesBookmarkAddedEventCount,
+  readExperimentFacts,
+  recordExperimentEvent,
+  recordOpenAnnouncementViewed,
+  type ExperimentEventInput,
+} from "./experiment-event-service";
+export {
+  EXPERIMENT_VISITOR_COOKIE_NAME,
+  hasExperimentVisitorHashSecret,
+  readExperimentVisitorHashSecret,
+  resolveExperimentVisitorIdentity,
+  type ExperimentVisitorIdentity,
+} from "./experiment-visitor";

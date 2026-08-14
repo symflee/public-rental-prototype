@@ -25,6 +25,7 @@ export type PublicRentalMapViewport = Readonly<{
 
 export type PublicRentalMapFilter = Readonly<{
   categories: readonly PublicRentalLegalCategory[];
+  locationIdentifiers?: readonly string[];
   municipality: "ALL" | PublicRentalMunicipality;
   query: string;
 }>;
@@ -84,9 +85,18 @@ function hasCoordinate(location: PublicRentalLocation): location is LocatedPubli
 
 function matchesRequest(location: LocatedPublicRentalLocation, request: PublicRentalMapRequest) {
   if (!isWithinViewport(location, request.viewport)) return false;
+  if (!matchesLocationIdentifiers(location, request.filter.locationIdentifiers)) return false;
   if (!matchesMunicipality(location, request.filter.municipality)) return false;
   if (!matchesCategories(location, request.filter.categories)) return false;
   return matchesQuery(location, request.filter.query);
+}
+
+function matchesLocationIdentifiers(
+  location: LocatedPublicRentalLocation,
+  locationIdentifiers: readonly string[] | undefined,
+) {
+  if (!locationIdentifiers) return true;
+  return locationIdentifiers.includes(location.id);
 }
 
 function isWithinViewport(

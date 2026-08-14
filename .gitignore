@@ -4,7 +4,7 @@ node_modules/
 
 # Next.js
 .next/
-out/
+/out/
 
 # Vercel
 .vercel/
@@ -50,3 +50,4 @@ src/infrastructure/public-data/generated/public-rental-coordinate-failures.json
 src/infrastructure/public-data/generated/public-rental-locations.csv
 src/infrastructure/public-data/generated/public-rental-recruitment-failures.json
 src/infrastructure/public-data/generated/*.tmp
+.vercel

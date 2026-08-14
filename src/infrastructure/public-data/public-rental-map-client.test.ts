@@ -6,7 +6,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 test("지도 요청을 범위와 필터가 포함된 작은 API 요청으로 만든다", () => {
   const source = createPublicRentalMapRequestUrl({
-    filter: { categories: ["HAPPY_HOUSING"], municipality: "YONGIN", query: "동백 행복" },
+    filter: {
+      categories: ["HAPPY_HOUSING"],
+      locationIdentifiers: ["location-one", "location-two"],
+      municipality: "YONGIN",
+      query: "동백 행복",
+    },
     viewport: {
       east: 127.3,
       height: 800,
@@ -23,6 +28,7 @@ test("지도 요청을 범위와 필터가 포함된 작은 API 요청으로 만
   expect(url.searchParams.get("categories")).toBe("HAPPY_HOUSING");
   expect(url.searchParams.get("municipality")).toBe("YONGIN");
   expect(url.searchParams.get("query")).toBe("동백 행복");
+  expect(url.searchParams.get("locationIds")).toBe("location-one,location-two");
 });
 
 test("지도 API 오류는 호출자에게 실패로 전달한다", async () => {

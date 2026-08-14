@@ -41,6 +41,9 @@ function appendViewport(parameters: URLSearchParams, request: PublicRentalMapReq
 function appendFilter(parameters: URLSearchParams, request: PublicRentalMapRequest) {
   const { filter } = request;
   if (filter.categories.length > 0) parameters.set("categories", filter.categories.join(","));
+  if (filter.locationIdentifiers) {
+    parameters.set("locationIds", filter.locationIdentifiers.join(","));
+  }
   if (filter.municipality !== "ALL") parameters.set("municipality", filter.municipality);
   if (filter.query) parameters.set("query", filter.query);
 }

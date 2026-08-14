@@ -1,4 +1,6 @@
 import {
+  MAXIMUM_PUBLIC_RENTAL_BOOKMARKS,
+  MAXIMUM_PUBLIC_RENTAL_LOCATION_IDENTIFIER_LENGTH,
   createGyeonggiMunicipalities,
   type PublicRentalLegalCategory,
   type PublicRentalMapFilter,
@@ -30,9 +32,28 @@ export function readPublicRentalMapRequest(parameters: URLSearchParams): PublicR
 function readFilter(parameters: URLSearchParams): PublicRentalMapFilter {
   return {
     categories: readCategories(parameters.get("categories")),
+    ...readLocationIdentifierFilter(parameters),
     municipality: readMunicipality(parameters.get("municipality")),
     query: readQuery(parameters.get("query")),
   };
+}
+
+function readLocationIdentifierFilter(parameters: URLSearchParams) {
+  if (!parameters.has("locationIds")) return {};
+  return { locationIdentifiers: readLocationIdentifiers(parameters.get("locationIds")) };
+}
+
+function readLocationIdentifiers(value: string | null) {
+  if (!value) return [];
+  const identifiers = value.split(",");
+  if (identifiers.length > MAXIMUM_PUBLIC_RENTAL_BOOKMARKS) throw new Error(REQUEST_ERROR_MESSAGE);
+  if (identifiers.every(isLocationIdentifier)) return identifiers;
+  throw new Error(REQUEST_ERROR_MESSAGE);
+}
+
+function isLocationIdentifier(value: string) {
+  if (!isNonEmpty(value)) return false;
+  return value.length <= MAXIMUM_PUBLIC_RENTAL_LOCATION_IDENTIFIER_LENGTH;
 }
 
 function readCategories(value: string | null) {

@@ -9,6 +9,7 @@ test("지도 API 쿼리를 검증된 지도·필터 요청으로 변환한다", 
       east: "127.31",
       height: "760",
       level: "6",
+      locationIds: "location-one,location-two",
       municipality: "YONGIN",
       north: "37.52",
       query: "동백 행복",
@@ -21,6 +22,7 @@ test("지도 API 쿼리를 검증된 지도·필터 요청으로 변환한다", 
   expect(request).toEqual({
     filter: {
       categories: ["HAPPY_HOUSING", "NATIONAL_RENTAL"],
+      locationIdentifiers: ["location-one", "location-two"],
       municipality: "YONGIN",
       query: "동백 행복",
     },
@@ -57,6 +59,16 @@ test("빈 필터 값에는 전체 지역과 공급유형을 적용한다", () =>
   const request = readPublicRentalMapRequest(createValidParameters());
 
   expect(request.filter).toEqual({ categories: [], municipality: "ALL", query: "" });
+});
+
+test("저장 주택 식별자는 최대 100개까지만 허용한다", () => {
+  const parameters = createValidParameters();
+  const identifiers = Array.from({ length: 101 }, (_, index) => `location-${index}`);
+  parameters.set("locationIds", identifiers.join(","));
+
+  expect(() => readPublicRentalMapRequest(parameters)).toThrow(
+    "지도 요청 형식이 올바르지 않습니다.",
+  );
 });
 
 function createValidParameters() {

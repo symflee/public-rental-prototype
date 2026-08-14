@@ -1,13 +1,26 @@
 import {
   createCurrentMonthDateRange,
+  createExperimentDashboard,
   createRecentDateRange,
+  PUBLIC_RENTAL_EXPLORATION_EXPERIMENT_KEY,
+  PUBLIC_RENTAL_EXPLORATION_TREATMENT_VARIANT,
   readAnalyticsDateRange,
   readKoreanDate,
   type AnalyticsDashboard,
   type AnalyticsRank,
+  type ExperimentDashboard,
 } from "@/domain/announcement-analytics";
-import { isAnalyticsStorageEnabled, readAnalyticsDashboard } from "@/infrastructure/analytics";
+import { isPublicRentalSnapshotFresh } from "@/domain/public-rental";
+import {
+  isAnalyticsStorageEnabled,
+  isExperimentAnalyticsEnabled,
+  readAllHomesBookmarkAddedEventCount,
+  readAnalyticsDashboard,
+  readExperimentFacts,
+} from "@/infrastructure/analytics";
 import { publicRentalSnapshot } from "@/infrastructure/public-data/public-rental-snapshot";
+
+import { ExperimentDashboardSection } from "./experiment-dashboard-section";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +34,37 @@ type DashboardMetric = Readonly<{
   value: string;
 }>;
 
+type AnalyticsDashboardPageProperties = Readonly<{
+  dashboard: AnalyticsDashboard;
+  experimentDashboard: ExperimentDashboard;
+  experimentTrackingEnabled: boolean;
+  range: Readonly<{ from: string; to: string }>;
+}>;
+
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProperties) {
   if (!isAnalyticsStorageEnabled()) return <AnalyticsUnavailable />;
   const parameters = await searchParams;
   const range = readDashboardDateRange(parameters);
-  const dashboard = await readAnalyticsDashboard(range);
-  return <AnalyticsDashboardPage dashboard={dashboard} range={range} />;
+  const dashboard = await readDashboard(range);
+  return <AnalyticsDashboardPage {...dashboard} range={range} />;
+}
+
+async function readDashboard(range: Readonly<{ from: string; to: string }>) {
+  const experimentKey = PUBLIC_RENTAL_EXPLORATION_EXPERIMENT_KEY;
+  const experimentTrackingEnabled = readExperimentTrackingEnabled();
+  const [dashboard, facts, bookmarkAddCount] = await Promise.all([
+    readAnalyticsDashboard(range),
+    readExperimentFacts(range, experimentKey),
+    readAllHomesBookmarkAddedEventCount(range, experimentKey),
+  ]);
+  const variant = PUBLIC_RENTAL_EXPLORATION_TREATMENT_VARIANT;
+  const experimentDashboard = createExperimentDashboard(facts, variant, bookmarkAddCount);
+  return { dashboard, experimentDashboard, experimentTrackingEnabled };
+}
+
+function readExperimentTrackingEnabled() {
+  if (!isExperimentAnalyticsEnabled()) return false;
+  return isPublicRentalSnapshotFresh(publicRentalSnapshot.generatedAt);
 }
 
 function readDashboardDateRange(
@@ -50,19 +88,45 @@ function AnalyticsUnavailable() {
   );
 }
 
-function AnalyticsDashboardPage({
-  dashboard,
-  range,
-}: Readonly<{ dashboard: AnalyticsDashboard; range: Readonly<{ from: string; to: string }> }>) {
+function AnalyticsDashboardPage(properties: AnalyticsDashboardPageProperties) {
   return (
     <main className="h-dvh overflow-y-auto bg-slate-50 py-8">
-      <div className="mx-auto max-w-6xl space-y-10 px-6 pb-20 md:px-10">
-        <AnalyticsHeading range={range} />
-        <AnalyticsPrimaryMetrics dashboard={dashboard} />
-        <AnalyticsDetails dashboard={dashboard} />
-        <AnalyticsCaveat />
-      </div>
+      <AnalyticsDashboardContent {...properties} />
     </main>
+  );
+}
+
+function AnalyticsDashboardContent(properties: AnalyticsDashboardPageProperties) {
+  return (
+    <div className="mx-auto max-w-6xl space-y-10 px-6 pb-20 md:px-10">
+      <AnalyticsDashboardSections {...properties} />
+    </div>
+  );
+}
+
+function AnalyticsDashboardSections(properties: AnalyticsDashboardPageProperties) {
+  const { dashboard, experimentDashboard, experimentTrackingEnabled, range } = properties;
+  return (
+    <>
+      <AnalyticsHeading range={range} />
+      <ExperimentAnalytics dashboard={experimentDashboard} enabled={experimentTrackingEnabled} />
+      <AnalyticsPrimaryMetrics dashboard={dashboard} />
+      <AnalyticsDetails dashboard={dashboard} />
+      <AnalyticsCaveat />
+    </>
+  );
+}
+
+function ExperimentAnalytics({
+  dashboard,
+  enabled,
+}: Readonly<{ dashboard: ExperimentDashboard; enabled: boolean }>) {
+  return (
+    <ExperimentDashboardSection
+      dashboard={dashboard}
+      readLocationLabel={readLocationLabel}
+      trackingEnabled={enabled}
+    />
   );
 }
 
@@ -72,7 +136,7 @@ function AnalyticsHeading({ range }: Readonly<{ range: Readonly<{ from: string; 
       <p className="text-sm font-semibold text-emerald-700">기획 검토용 지표</p>
       <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">공고 확인 행동 분석</h1>
       <p className="mt-2 text-sm text-slate-600">
-        개인 식별 없이 집계한 지도 조회와 공고 확인 행동입니다.
+        일별 행동 횟수와 익명화한 고유 방문자 실험 지표입니다.
       </p>
       <AnalyticsRangePresets />
       <AnalyticsRangeForm range={range} />

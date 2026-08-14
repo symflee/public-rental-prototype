@@ -1,10 +1,13 @@
-import { purgeExpiredAnalyticsCounters } from "@/infrastructure/analytics";
+import {
+  purgeExpiredAnalyticsCounters,
+  purgeExpiredExperimentEvents,
+} from "@/infrastructure/analytics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   if (!hasCronAuthorization(request)) return new Response("Unauthorized", { status: 401 });
-  await purgeExpiredAnalyticsCounters();
+  await Promise.all([purgeExpiredAnalyticsCounters(), purgeExpiredExperimentEvents()]);
   return Response.json({ purged: true }, { headers: { "Cache-Control": "no-store" } });
 }
 
