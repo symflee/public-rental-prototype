@@ -4,9 +4,8 @@ import type {
   PublicRentalMunicipality,
 } from "./public-rental-location";
 
-const INDIVIDUAL_PIN_LEVEL = 6;
+const INDIVIDUAL_PIN_LEVEL = 7;
 const INDIVIDUAL_PIN_LIMIT = 180;
-const INDIVIDUAL_PIN_CELL_PIXELS = 48;
 const CLUSTER_CELL_PIXELS = 96;
 const MINIMUM_CLUSTER_COLUMNS = 3;
 const MAXIMUM_CLUSTER_COLUMNS = 12;
@@ -143,40 +142,7 @@ function shouldShowIndividualPins(
   viewport: PublicRentalMapViewport,
 ) {
   if (viewport.level > INDIVIDUAL_PIN_LEVEL) return false;
-  if (locations.length > INDIVIDUAL_PIN_LIMIT) return false;
-  return hasSeparatedPins(locations, viewport);
-}
-
-function hasSeparatedPins(
-  locations: readonly LocatedPublicRentalLocation[],
-  viewport: PublicRentalMapViewport,
-) {
-  const grid = createPinGrid(viewport);
-  const occupiedCells = locations.map((location) => createPinCellKey(location, viewport, grid));
-  return new Set(occupiedCells).size === locations.length;
-}
-
-function createPinGrid(viewport: PublicRentalMapViewport): Grid {
-  const columns = readPinGridCount(viewport.width);
-  const rows = readPinGridCount(viewport.height);
-  return {
-    columns,
-    latitudeStep: (viewport.north - viewport.south) / rows,
-    longitudeStep: (viewport.east - viewport.west) / columns,
-    rows,
-  };
-}
-
-function readPinGridCount(size: number) {
-  return Math.max(1, Math.floor(size / INDIVIDUAL_PIN_CELL_PIXELS));
-}
-
-function createPinCellKey(
-  location: LocatedPublicRentalLocation,
-  viewport: PublicRentalMapViewport,
-  grid: Grid,
-) {
-  return createGridCellKey(locateGridCell(location.coordinate, viewport, grid));
+  return locations.length <= INDIVIDUAL_PIN_LIMIT;
 }
 
 function createLocationResult(

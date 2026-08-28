@@ -84,6 +84,16 @@ test("마커 이미지와 클러스터 설정을 적용해 컨트롤러를 만�
   expectMarkerConfiguration(fixture);
 });
 
+test("서버 집계 핀은 지도에 직접 표시하고 원본 위치만 클러스터링한다", async () => {
+  const fixture = createMapFixture();
+  const aggregateMarker = { ...MARKERS[0]!, clusterCount: 39, locationId: "cluster:1:1" };
+
+  await renderFixtureMap(fixture, [aggregateMarker, MARKERS[1]!]);
+
+  expect(fixture.markerInstances[0]?.setMap).toHaveBeenCalledWith(fixture.mapInstance);
+  expect(fixture.clustererInstance.addMarkers).toHaveBeenCalledWith([fixture.markerInstances[1]]);
+});
+
 test("같은 컨테이너의 각 lease는 마지막 해제 전까지 지도를 공유한다", async () => {
   const fixture = createMapFixture();
   const [firstController, secondController] = await renderSharedControllers(fixture);
@@ -297,7 +307,7 @@ function createExpectedClusterConfiguration() {
     disableClickZoom: true,
     gridSize: 60,
     minClusterSize: 2,
-    minLevel: 7,
+    minLevel: 1,
     styles: createExpectedClusterStyles(),
   };
 }

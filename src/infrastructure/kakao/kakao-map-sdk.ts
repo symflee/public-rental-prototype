@@ -491,7 +491,7 @@ function replaceMarkers(state: ControllerState, configurations: readonly MapMark
   state.resources.clusterer.clear();
   const records = configurations.map((item) => createMarkerRecord(state.resources.maps, item));
   state.markerRecords = new Map(records.map(createMarkerRecordEntry));
-  state.resources.clusterer.addMarkers(records.map(readMarker));
+  displayMarkerRecords(state, records);
   restoreMarkerSelection(state);
 }
 
@@ -527,6 +527,29 @@ function createMarkerRecordEntry(record: MarkerRecord) {
 
 function readMarker(record: MarkerRecord) {
   return record.marker;
+}
+
+function displayMarkerRecords(state: ControllerState, records: readonly MarkerRecord[]) {
+  displayAggregateMarkerRecords(state, records);
+  clusterLocationMarkerRecords(state, records);
+}
+
+function displayAggregateMarkerRecords(state: ControllerState, records: readonly MarkerRecord[]) {
+  const aggregateRecords = records.filter(isAggregateMarkerRecord);
+  aggregateRecords.forEach((record) => record.marker.setMap(state.resources.map));
+}
+
+function clusterLocationMarkerRecords(state: ControllerState, records: readonly MarkerRecord[]) {
+  const locationMarkers = records.filter(isLocationMarkerRecord).map(readMarker);
+  state.resources.clusterer.addMarkers(locationMarkers);
+}
+
+function isAggregateMarkerRecord(record: MarkerRecord) {
+  return record.configuration.clusterCount !== undefined;
+}
+
+function isLocationMarkerRecord(record: MarkerRecord) {
+  return record.configuration.clusterCount === undefined;
 }
 
 function selectMarker(state: ControllerState, locationId: string | undefined) {
@@ -893,7 +916,7 @@ function createClustererOptions(map: KakaoMapInstance): KakaoMarkerClustererOpti
     map,
     markers: [],
     minClusterSize: 2,
-    minLevel: 7,
+    minLevel: 1,
     styles: CLUSTER_STYLES,
   };
 }

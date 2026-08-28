@@ -39,21 +39,33 @@ test("충분히 확대되고 핀 수가 제한 안이면 각 주택의 경량 �
   expect(result.locations[0]?.coordinate?.latitude).toBe(37.2);
 });
 
+test("클러스터 경계보다 넓은 레벨에서는 소수의 위치도 화면 격자로 집계한다", () => {
+  const result = createPublicRentalMapResult(
+    createSpacedLocations(),
+    createRequest({ ...VIEWPORT, level: 8 }),
+  );
+
+  expect(result.mode).toBe("clusters");
+  expect(result.locations).toEqual([]);
+});
+
 test("확대 상태여도 핀이 과밀하면 집계를 유지한다", () => {
   const result = createPublicRentalMapResult(
     createLocations(181),
-    createRequest({ ...VIEWPORT, level: 4 }),
+    createRequest({ ...VIEWPORT, level: 7 }),
   );
 
   expect(result.mode).toBe("clusters");
   expect(result.clusters).not.toEqual([]);
 });
 
-test("개수가 적어도 화면에서 겹치는 핀은 집계로 유지한다", () => {
+test("클러스터 경계에서는 가까운 핀도 SDK가 묶도록 원본 위치를 반환한다", () => {
   const locations = [createLocation(0), createLocation(1)];
-  const result = createPublicRentalMapResult(locations, createRequest({ ...VIEWPORT, level: 6 }));
+  const result = createPublicRentalMapResult(locations, createRequest({ ...VIEWPORT, level: 7 }));
 
-  expect(result.mode).toBe("clusters");
+  expect(result.mode).toBe("locations");
+  expect(result.clusters).toEqual([]);
+  expect(result.locations.map((location) => location.id)).toEqual(["location-0", "location-1"]);
 });
 
 test("시군, 공급 유형, 검색어와 지도 영역을 함께 적용한다", () => {
