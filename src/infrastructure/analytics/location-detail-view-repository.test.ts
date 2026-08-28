@@ -33,14 +33,17 @@ describe("location detail view repository", () => {
     });
   });
 
-  test("과거 실행 교체는 해당 데이터셋만 삭제하고 원자적으로 다시 넣는다", async () => {
+  test("과거 실행 교체는 같은 이벤트를 갱신하고 남은 행만 원자적으로 지운다", async () => {
     const executor = createExecutor([]);
     const repository = createLocationDetailViewRepositoryWithExecutor(executor);
 
     await repository.replaceHistoricalRun(createRun(), [createEvent()]);
 
+    const statement = vi.mocked(executor.execute).mock.calls[0]?.[0] ?? "";
+    expect(statement).toContain("ON CONFLICT (event_id) DO UPDATE SET");
+    expect(statement).toContain("event_id NOT IN (SELECT event_id FROM input_views)");
     expect(executor.execute).toHaveBeenCalledWith(
-      expect.stringContaining("DELETE FROM analytics_location_detail_views"),
+      statement,
       expect.arrayContaining(["historical-2026-08-11-14-v1"]),
     );
   });

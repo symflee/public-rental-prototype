@@ -88,9 +88,7 @@ const CLEAR_RUN = `
   DELETE FROM analytics_runs WHERE dataset_id = $1
 `;
 const REPLACE_RUN = `
-  WITH deleted_views AS (
-    DELETE FROM analytics_location_detail_views WHERE dataset_id = $1 RETURNING 1
-  ), saved_run AS (
+  WITH saved_run AS (
     INSERT INTO analytics_runs (
       dataset_id, label, period_starts_on, period_ends_on, reference_time, origin, status
     ) VALUES ($1, $2, $3::date, $4::date, $5::timestamptz,
@@ -114,7 +112,7 @@ const REPLACE_RUN = `
       matched_notice_id text,
       status_source text
     )
-  ), inserted_views AS (
+  ), saved_views AS (
     INSERT INTO analytics_location_detail_views (
       event_id, dataset_id, metric_date, viewed_at, location_id,
       notice_state, matched_notice_id, status_source, origin
@@ -123,11 +121,25 @@ const REPLACE_RUN = `
       notice_state, matched_notice_id, status_source, 'RETROSPECTIVE_RECONSTRUCTION'
     FROM input_views
     CROSS JOIN saved_run
-    RETURNING 1
+    ON CONFLICT (event_id) DO UPDATE SET
+      dataset_id = EXCLUDED.dataset_id,
+      metric_date = EXCLUDED.metric_date,
+      viewed_at = EXCLUDED.viewed_at,
+      location_id = EXCLUDED.location_id,
+      notice_state = EXCLUDED.notice_state,
+      matched_notice_id = EXCLUDED.matched_notice_id,
+      status_source = EXCLUDED.status_source,
+      origin = EXCLUDED.origin
+    RETURNING event_id
+  ), deleted_stale_views AS (
+    DELETE FROM analytics_location_detail_views
+    WHERE dataset_id = $1
+      AND event_id NOT IN (SELECT event_id FROM input_views)
+    RETURNING event_id
   )
   UPDATE analytics_runs SET status = 'FROZEN', frozen_at = now()
   WHERE dataset_id = $1
-    AND (SELECT COUNT(*) FROM inserted_views) = jsonb_array_length($6::jsonb)
+    AND (SELECT COUNT(*) FROM saved_views) = jsonb_array_length($6::jsonb)
 `;
 
 export function createLocationDetailViewRepository(
