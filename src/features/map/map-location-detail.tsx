@@ -1,4 +1,5 @@
-import type {
+import {
+  type PublicRentalRecruitmentState,
   PublicRentalLegalCategory,
   PublicRentalLocation,
   PublicRentalRecruitmentNotice,
@@ -8,6 +9,7 @@ import type {
 import type { MapMarkerDetail } from "@/infrastructure/kakao/kakao-map-sdk";
 
 import { createLegalCategoryText, readCategoryLabel, readProviderLabel } from "./map-labels";
+import { readManualRecruitmentTiming, readMapRecruitmentState } from "./map-recruitment-status";
 import { RecruitmentInterestButton } from "./recruitment-interest-button";
 
 type CategorySummary = Readonly<{
@@ -21,11 +23,13 @@ export function MapLocationDetail({
   location,
   onBookmarkToggle,
   bookmarkMessage,
+  recruitmentAbsenceReliable = true,
 }: Readonly<{
   bookmarked?: boolean;
   bookmarkMessage?: string;
   location: PublicRentalLocation | undefined;
   onBookmarkToggle?: (locationId: string) => void;
+  recruitmentAbsenceReliable?: boolean;
 }>) {
   if (!location) return <EmptyLocationDetail />;
   return (
@@ -34,6 +38,7 @@ export function MapLocationDetail({
       bookmarkMessage={bookmarkMessage}
       location={location}
       onBookmarkToggle={onBookmarkToggle}
+      recruitmentAbsenceReliable={recruitmentAbsenceReliable}
     />
   );
 }
@@ -58,49 +63,71 @@ type LocationDetailProperties = Readonly<{
   bookmarkMessage?: string;
   location: PublicRentalLocation;
   onBookmarkToggle?: (locationId: string) => void;
+  recruitmentAbsenceReliable: boolean;
 }>;
 
 function LocationDetail(properties: LocationDetailProperties) {
+  const recruitmentState = readMapRecruitmentState(
+    properties.location,
+    properties.recruitmentAbsenceReliable,
+  );
   return (
     <section
       aria-label="선택한 임대주택 상세"
       className="border-t border-slate-200 p-4"
       role="region"
     >
-      <LocationSummary {...properties} />
-      <LocationInformation location={properties.location} />
+      <LocationSummary {...properties} recruitmentState={recruitmentState} />
+      <LocationInformation location={properties.location} recruitmentState={recruitmentState} />
     </section>
   );
 }
 
-function LocationSummary(properties: LocationDetailProperties) {
+function LocationSummary(
+  properties: LocationDetailProperties &
+    Readonly<{ recruitmentState: PublicRentalRecruitmentState }>,
+) {
   return (
     <>
       <h2 className="text-base font-bold text-slate-950">{properties.location.name}</h2>
-      <LocationBadges location={properties.location} />
+      <LocationBadges
+        location={properties.location}
+        recruitmentState={properties.recruitmentState}
+      />
       <BookmarkControl {...properties} />
     </>
   );
 }
 
-function LocationInformation({ location }: Readonly<{ location: PublicRentalLocation }>) {
+function LocationInformation({
+  location,
+  recruitmentState,
+}: Readonly<{
+  location: PublicRentalLocation;
+  recruitmentState: PublicRentalRecruitmentState;
+}>) {
   return (
     <>
       <LocationFacts location={location} />
       <CategorySummaries location={location} />
       <PropertyNames location={location} />
       <RecruitmentNoticeLinks
+        location={location}
         locationId={location.id}
         notices={location.recruitmentNotices ?? []}
+        recruitmentState={recruitmentState}
       />
       <SourceLinks sources={location.sourceRecords} />
     </>
   );
 }
 
-function BookmarkControl(properties: LocationDetailProperties) {
+function BookmarkControl(
+  properties: LocationDetailProperties &
+    Readonly<{ recruitmentState: PublicRentalRecruitmentState }>,
+) {
   if (!properties.onBookmarkToggle) return null;
-  if (properties.location.recruitmentNotices?.length && !properties.bookmarked) return null;
+  if (properties.recruitmentState.status === "OPEN" && !properties.bookmarked) return null;
   return (
     <div className="mt-3">
       <button
@@ -133,7 +160,13 @@ function readBookmarkButtonText(bookmarked: boolean) {
   return "이 주택 저장";
 }
 
-function LocationBadges({ location }: Readonly<{ location: PublicRentalLocation }>) {
+function LocationBadges({
+  location,
+  recruitmentState,
+}: Readonly<{
+  location: PublicRentalLocation;
+  recruitmentState: PublicRentalRecruitmentState;
+}>) {
   return (
     <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
       <Badge className="bg-slate-100 text-slate-700" text={readProviderLabel(location.provider)} />
@@ -141,16 +174,36 @@ function LocationBadges({ location }: Readonly<{ location: PublicRentalLocation 
         className="bg-emerald-50 text-emerald-700"
         text={createLegalCategoryText(location.legalCategories)}
       />
-      <RecruitmentStatusBadge location={location} />
+      <RecruitmentStatusBadge location={location} recruitmentState={recruitmentState} />
     </div>
   );
 }
 
-function RecruitmentStatusBadge({ location }: Readonly<{ location: PublicRentalLocation }>) {
-  if (location.recruitmentNotices?.length) {
-    return <Badge className="bg-amber-50 text-amber-800" text="수집 시 모집 중" />;
+function RecruitmentStatusBadge({
+  location,
+  recruitmentState,
+}: Readonly<{
+  location: PublicRentalLocation;
+  recruitmentState: PublicRentalRecruitmentState;
+}>) {
+  if (recruitmentState.status === "OPEN") return <OpenRecruitmentBadge state={recruitmentState} />;
+  if (recruitmentState.status === "UNKNOWN") {
+    return <Badge className="bg-slate-100 text-slate-600" text="모집 상태 확인 필요" />;
   }
-  return <Badge className="bg-slate-100 text-slate-600" text="수집 시 모집공고 없음" />;
+  const manualTiming = readManualRecruitmentTiming(location);
+  if (manualTiming === "UPCOMING")
+    return <Badge className="bg-sky-50 text-sky-800" text="모집 예정 · 수기 연결" />;
+  if (manualTiming === "CLOSED")
+    return <Badge className="bg-slate-100 text-slate-700" text="지난 공고 · 수기 연결" />;
+  return <Badge className="bg-slate-100 text-slate-600" text="현재 모집공고 없음" />;
+}
+
+function OpenRecruitmentBadge({ state }: Readonly<{ state: PublicRentalRecruitmentState }>) {
+  const notice = state.openNotices.at(0);
+  if (notice?.sourceKind === "MANUAL_REVIEW") {
+    return <Badge className="bg-amber-50 text-amber-800" text="현재 모집 중 · 수기 연결" />;
+  }
+  return <Badge className="bg-amber-50 text-amber-800" text="현재 모집 중" />;
 }
 
 function Badge({ className, text }: Readonly<{ className: string; text: string }>) {
@@ -218,20 +271,50 @@ function PropertyNames({ location }: Readonly<{ location: PublicRentalLocation }
 }
 
 function RecruitmentNoticeLinks({
+  location,
   locationId,
   notices,
-}: Readonly<{ locationId: string; notices: readonly PublicRentalRecruitmentNotice[] }>) {
+  recruitmentState,
+}: Readonly<{
+  location: PublicRentalLocation;
+  locationId: string;
+  notices: readonly PublicRentalRecruitmentNotice[];
+  recruitmentState: PublicRentalRecruitmentState;
+}>) {
   if (notices.length === 0) return <RecruitmentInterestButton locationId={locationId} />;
   return (
-    <div className="mt-4">
-      <h3 className="text-xs font-semibold text-slate-500">수집 시 모집 중 공고</h3>
-      <ul className="mt-2 space-y-2">
-        {notices.map((notice) => (
-          <RecruitmentNoticeLink key={notice.id} locationId={locationId} notice={notice} />
-        ))}
-      </ul>
-    </div>
+    <>
+      <div className="mt-4">
+        <h3 className="text-xs font-semibold text-slate-500">
+          {readNoticeSectionTitle(location, recruitmentState)}
+        </h3>
+        <ul className="mt-2 space-y-2">
+          {notices.map((notice) => (
+            <RecruitmentNoticeLink key={notice.id} locationId={locationId} notice={notice} />
+          ))}
+        </ul>
+      </div>
+      <ClosedNoticeInterestButton locationId={locationId} state={recruitmentState} />
+    </>
   );
+}
+
+function readNoticeSectionTitle(
+  location: PublicRentalLocation,
+  state: PublicRentalRecruitmentState,
+) {
+  if (state.status === "OPEN") return "현재 모집 중 공고";
+  if (state.status === "UNKNOWN") return "연결된 모집공고";
+  if (readManualRecruitmentTiming(location) === "UPCOMING") return "예정 모집공고";
+  return "지난 모집공고";
+}
+
+function ClosedNoticeInterestButton({
+  locationId,
+  state,
+}: Readonly<{ locationId: string; state: PublicRentalRecruitmentState }>) {
+  if (state.status === "OPEN") return null;
+  return <RecruitmentInterestButton locationId={locationId} />;
 }
 
 function RecruitmentNoticeLink({
@@ -249,6 +332,8 @@ function RecruitmentNoticeLink({
       >
         {notice.title}
         <RecruitmentNoticeDate announcedAt={notice.announcedAt} />
+        <RecruitmentNoticePeriod notice={notice} />
+        <RecruitmentNoticeSource notice={notice} />
       </a>
     </li>
   );
@@ -262,6 +347,32 @@ function createTrackedRecruitmentUrl(locationId: string, noticeId: string) {
 function RecruitmentNoticeDate({ announcedAt }: Readonly<{ announcedAt: string | null }>) {
   if (!announcedAt) return null;
   return <span className="mt-1 block font-normal">공고일 {announcedAt}</span>;
+}
+
+function RecruitmentNoticePeriod({ notice }: Readonly<{ notice: PublicRentalRecruitmentNotice }>) {
+  if (!notice.applicationStartsAt || !notice.applicationEndsAt) return null;
+  return (
+    <span className="mt-1 block font-normal">
+      모집기간 {formatRecruitmentBoundary(notice.applicationStartsAt)} ~{" "}
+      {formatRecruitmentBoundary(notice.applicationEndsAt)}
+    </span>
+  );
+}
+
+function formatRecruitmentBoundary(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Seoul",
+  }).format(date);
+}
+
+function RecruitmentNoticeSource({ notice }: Readonly<{ notice: PublicRentalRecruitmentNotice }>) {
+  if (notice.sourceKind !== "MANUAL_REVIEW") return null;
+  return <span className="mt-1 block font-normal">공식 LH 공고 · 수기 연결</span>;
 }
 
 function SourceLinks({ sources }: Readonly<{ sources: readonly PublicRentalSourceRecord[] }>) {

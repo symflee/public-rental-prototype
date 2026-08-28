@@ -4,7 +4,7 @@ import {
   PUBLIC_RENTAL_EXPLORATION_EXPERIMENT_KEY,
   type ExperimentEventKind,
 } from "@/domain/announcement-analytics";
-import { isPublicRentalSnapshotFresh } from "@/domain/public-rental";
+import { readRecruitmentStateAt } from "@/domain/public-rental";
 import {
   isExperimentAnalyticsEnabled,
   recordAnalyticsSafely,
@@ -12,6 +12,7 @@ import {
   resolveExperimentVisitorIdentity,
   type ExperimentEventInput,
 } from "@/infrastructure/analytics";
+import { readLocationsWithManualRecruitmentNotices } from "@/infrastructure/manual-recruitment/manual-recruitment-overlay";
 import { publicRentalSnapshot } from "@/infrastructure/public-data/public-rental-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +22,7 @@ const EVENT_IDENTIFIER_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 export async function POST(request: Request) {
   const input = await readExperimentEventInput(request);
   if (!input) return createInvalidRequestResponse();
-  if (!hasValidSubject(input)) return createInvalidSubjectResponse();
-  if (!isPublicRentalSnapshotFresh(publicRentalSnapshot.generatedAt)) {
-    return createRecordedResponse();
-  }
+  if (!(await hasValidSubject(input))) return createInvalidSubjectResponse();
   if (!isExperimentAnalyticsEnabled()) return createRecordedResponse();
   const identity = resolveExperimentVisitorIdentity(request);
   if (!identity) return createRecordedResponse();
@@ -71,22 +69,20 @@ function createEligibleInput(input: ExperimentEventInput, locationId: unknown) {
   return input;
 }
 
-function hasValidSubject(input: ExperimentEventInput) {
+async function hasValidSubject(input: ExperimentEventInput) {
   if (input.eventKind === "EXPERIMENT_ELIGIBLE") return true;
-  const location = findLocation(input.locationId);
+  const location = await findLocation(input.locationId);
   if (!location) return false;
   if (input.eventKind === "BOOKMARK_REMOVED") return true;
-  if (input.eventKind === "OPEN_ANNOUNCEMENT_VIEWED") return hasOpenNotice(location);
-  return !hasOpenNotice(location);
+  const status = readRecruitmentStateAt(location, new Date()).status;
+  if (input.eventKind === "OPEN_ANNOUNCEMENT_VIEWED") return status === "OPEN";
+  return status === "NO_OPEN";
 }
 
-function findLocation(locationId: string | undefined) {
+async function findLocation(locationId: string | undefined) {
   if (!locationId) return undefined;
-  return publicRentalSnapshot.locations.find((location) => location.id === locationId);
-}
-
-function hasOpenNotice(location: (typeof publicRentalSnapshot.locations)[number]) {
-  return Boolean(location.recruitmentNotices?.length);
+  const locations = await readLocationsWithManualRecruitmentNotices(publicRentalSnapshot.locations);
+  return locations.find((location) => location.id === locationId);
 }
 
 function createRecordedResponse(recorded = true, setCookieHeader?: string, status = 200) {

@@ -49,6 +49,10 @@ const PUBLIC_RENTAL_SOURCES = [
   "SEONGNAM_URBAN_DEVELOPMENT_CORPORATION",
   "SEONGNAM_PUBLIC_WIFI",
 ] as const satisfies readonly PublicRentalSource[];
+const RECRUITMENT_NOTICE_SOURCE_KINDS = [
+  "AUTOMATED_IMPORT",
+  "MANUAL_REVIEW",
+] as const satisfies readonly PublicRentalRecruitmentNotice["sourceKind"][];
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -116,7 +120,26 @@ function isRecruitmentNotice(value: unknown): value is PublicRentalRecruitmentNo
   if (!isNonEmptyString(value.id)) return false;
   if (!isNonEmptyString(value.title)) return false;
   if (!isNullableString(value.announcedAt)) return false;
+  if (!isOptionalNullableString(value.applicationStartsAt)) return false;
+  if (!isOptionalNullableString(value.applicationEndsAt)) return false;
+  if (!isOptionalSourceKind(value.sourceKind)) return false;
+  if (!isOptionalNullableUrl(value.evidenceUrl)) return false;
   return isValidHttpUrl(value.url);
+}
+
+function isOptionalSourceKind(value: unknown) {
+  if (value === undefined) return true;
+  return isOneOf(value, RECRUITMENT_NOTICE_SOURCE_KINDS);
+}
+
+function isOptionalNullableString(value: unknown) {
+  if (value === undefined) return true;
+  return isNullableString(value);
+}
+
+function isOptionalNullableUrl(value: unknown) {
+  if (value === undefined || value === null) return true;
+  return isValidHttpUrl(value);
 }
 
 function isValidHttpUrl(value: unknown): value is string {

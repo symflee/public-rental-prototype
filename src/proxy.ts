@@ -11,4 +11,4 @@ function createUnauthorizedResponse() {
   return { headers: { "WWW-Authenticate": 'Basic realm="analytics"' }, status: 401 };
 }
 
-export const config = { matcher: ["/admin/analytics/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/api/admin/:path*"] };

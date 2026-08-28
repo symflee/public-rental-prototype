@@ -33,6 +33,7 @@ import { usePublicRentalMapData, type PublicRentalMapData } from "./public-renta
 import { usePageViewAnalytics } from "./use-page-view-analytics";
 import { recordBookmarkChange } from "./experiment-event-client";
 import { useLocationDetailAnalytics } from "./use-location-detail-analytics";
+import { isRecruitmentAbsenceReliable } from "./map-recruitment-status";
 import {
   usePublicRentalBookmarks,
   type BookmarkChangeHandler,
@@ -155,7 +156,10 @@ function useKakaoMapModel(properties: KakaoMapProperties) {
   const [viewport, setViewport] = useState<PublicRentalMapViewport | undefined>(undefined);
   const bookmarkState = useConfiguredBookmarks(properties);
   const explorer = useMapExplorer(properties.locations, viewport, bookmarkState.bookmarks.values);
-  useLocationDetailAnalytics(explorer.selectedLocation);
+  useLocationDetailAnalytics(
+    explorer.selectedLocation,
+    isRecruitmentAbsenceReliable(explorer.mapData.generatedAt, explorer.mapData.status),
+  );
   return useKakaoMapPresentation(properties, references, explorer, bookmarkState, setViewport);
 }
 

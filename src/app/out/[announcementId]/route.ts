@@ -1,4 +1,8 @@
-import { findOfficialRecruitmentNotice, isPublicRentalSnapshotFresh } from "@/domain/public-rental";
+import {
+  findOfficialRecruitmentNotice,
+  readRecruitmentStateAt,
+  type PublicRentalLocation,
+} from "@/domain/public-rental";
 import {
   isExperimentAnalyticsEnabled,
   recordAnalyticsQuietly,
@@ -6,6 +10,7 @@ import {
   recordOpenAnnouncementViewed,
   resolveExperimentVisitorIdentity,
 } from "@/infrastructure/analytics";
+import { readLocationsWithManualRecruitmentNotices } from "@/infrastructure/manual-recruitment";
 import { publicRentalSnapshot } from "@/infrastructure/public-data/public-rental-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +22,12 @@ type AnnouncementRouteContext = Readonly<{
 export async function GET(request: Request, context: AnnouncementRouteContext) {
   const locationId = new URL(request.url).searchParams.get("locationId");
   const { announcementId } = await context.params;
-  const notice = readNotice(locationId, announcementId);
+  const locations = await readLocationsWithManualRecruitmentNotices(publicRentalSnapshot.locations);
+  const notice = readNotice(locations, locationId, announcementId);
   if (!notice || !locationId) return new Response("모집공고를 찾을 수 없습니다.", { status: 404 });
   await recordAnalyticsQuietly(() => recordAnnouncementOpen(announcementId));
-  const cookie = await recordExperimentOpen(request, locationId);
+  const location = locations.find((value) => value.id === locationId);
+  const cookie = await recordExperimentOpen(request, location);
   return createRedirectResponse(notice.url, cookie);
 }
 
@@ -33,18 +40,22 @@ function createRedirectResponse(url: string, setCookieHeader: string | undefined
   });
 }
 
-async function recordExperimentOpen(request: Request, locationId: string) {
-  if (!isPublicRentalSnapshotFresh(publicRentalSnapshot.generatedAt)) return undefined;
+async function recordExperimentOpen(request: Request, location: PublicRentalLocation | undefined) {
+  if (!location || readRecruitmentStateAt(location, new Date()).status !== "OPEN") return undefined;
   if (!isExperimentAnalyticsEnabled()) return undefined;
   const identity = resolveExperimentVisitorIdentity(request);
   if (!identity) return undefined;
   await recordAnalyticsQuietly(() =>
-    recordOpenAnnouncementViewed(locationId, identity.visitorHash),
+    recordOpenAnnouncementViewed(location.id, identity.visitorHash),
   );
   return identity.setCookieHeader;
 }
 
-function readNotice(locationId: string | null, announcementId: string) {
+function readNotice(
+  locations: readonly PublicRentalLocation[],
+  locationId: string | null,
+  announcementId: string,
+) {
   if (!locationId) return undefined;
-  return findOfficialRecruitmentNotice(publicRentalSnapshot.locations, locationId, announcementId);
+  return findOfficialRecruitmentNotice(locations, locationId, announcementId);
 }

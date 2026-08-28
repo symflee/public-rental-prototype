@@ -52,9 +52,15 @@ export type RentalOffering = Readonly<{
   monthlyRentWon: number | null;
 }>;
 
+export type PublicRentalRecruitmentNoticeSourceKind = "AUTOMATED_IMPORT" | "MANUAL_REVIEW";
+
 export type PublicRentalRecruitmentNotice = Readonly<{
   announcedAt: string | null;
+  applicationEndsAt?: string | null;
+  applicationStartsAt?: string | null;
+  evidenceUrl?: string | null;
   id: string;
+  sourceKind?: PublicRentalRecruitmentNoticeSourceKind;
   title: string;
   url: string;
 }>;

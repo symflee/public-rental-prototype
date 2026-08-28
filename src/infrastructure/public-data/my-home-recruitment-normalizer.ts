@@ -120,7 +120,15 @@ function createCandidate(
   return {
     complexId: readFirstText(record, COMPLEX_IDENTIFIER_FIELDS) ?? null,
     complexName: readFirstText(record, COMPLEX_NAME_FIELDS) ?? null,
-    notice: { announcedAt: readFirstDate(record, NOTICE_DATE_FIELDS), id, title, url },
+    notice: {
+      announcedAt: readFirstDate(record, NOTICE_DATE_FIELDS),
+      applicationEndsAt: readFirstDate(record, END_DATE_FIELDS),
+      applicationStartsAt: readFirstDate(record, START_DATE_FIELDS),
+      id,
+      sourceKind: "AUTOMATED_IMPORT",
+      title,
+      url,
+    },
   };
 }
 

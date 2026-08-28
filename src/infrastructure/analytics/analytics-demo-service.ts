@@ -1,5 +1,3 @@
-import { readKoreanDate, subtractDays } from "@/domain/announcement-analytics";
-
 import {
   createAnalyticsCounterRepository,
   type AnalyticsDashboardDemoDay,
@@ -9,19 +7,19 @@ import {
 const repository = createAnalyticsCounterRepository();
 
 export function seedAnalyticsDashboardDemo() {
-  return repository.replaceAnalyticsDashboardDemo(createDemoDays(readKoreanDate()));
+  return repository.replaceAnalyticsDashboardDemo(createDemoDays());
 }
 
 export function clearAnalyticsDashboardDemo() {
   return repository.clearAnalyticsDashboardDemo();
 }
 
-function createDemoDays(today: string): AnalyticsDashboardDemoDays {
+function createDemoDays(): AnalyticsDashboardDemoDays {
   return [
-    createDemoDay(subtractDays(today, 3), 80, 88),
-    createDemoDay(subtractDays(today, 2), 85, 94),
-    createDemoDay(subtractDays(today, 1), 87, 99),
-    createDemoDay(today, 92, 107),
+    createDemoDay("2026-08-11", 22, 10),
+    createDemoDay("2026-08-12", 24, 12),
+    createDemoDay("2026-08-13", 21, 14),
+    createDemoDay("2026-08-14", 13, 16),
   ];
 }
 

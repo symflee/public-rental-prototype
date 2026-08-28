@@ -29,7 +29,16 @@ vi.mock("@/infrastructure/public-data/public-rental-snapshot", () => ({
     },
     locations: [
       { id: "without-notice", recruitmentNotices: [] },
-      { id: "with-notice", recruitmentNotices: [{ id: "notice-1" }] },
+      {
+        id: "with-notice",
+        recruitmentNotices: [
+          {
+            applicationEndsAt: "2100-01-01",
+            applicationStartsAt: "2026-01-01",
+            id: "notice-1",
+          },
+        ],
+      },
     ],
   },
 }));
@@ -110,13 +119,13 @@ test("설정이 없으면 쿠키 없이 성공 응답하고 계측만 생략한�
   expect(mocks.resolveExperimentVisitorIdentity).not.toHaveBeenCalled();
 });
 
-test("주택 스냅샷이 오래되면 실험 이벤트를 기록하지 않는다", async () => {
+test("주택 스냅샷이 오래되어도 화면에서 발생한 이벤트를 기록한다", async () => {
   snapshotState.generatedAt = "2020-01-01T00:00:00.000Z";
   const response = await POST(createRequest(createEligibleBody()));
 
   expect(response.status).toBe(200);
-  expect(mocks.resolveExperimentVisitorIdentity).not.toHaveBeenCalled();
-  expect(mocks.recordExperimentEvent).not.toHaveBeenCalled();
+  expect(mocks.resolveExperimentVisitorIdentity).toHaveBeenCalled();
+  expect(mocks.recordExperimentEvent).toHaveBeenCalled();
 });
 
 test("저장소 기록 실패는 재시도 가능한 오류로 응답한다", async () => {

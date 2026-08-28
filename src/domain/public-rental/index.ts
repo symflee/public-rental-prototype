@@ -27,10 +27,19 @@ export {
   type PublicRentalProperty,
   type PublicRentalProvider,
   type PublicRentalRecruitmentNotice,
+  type PublicRentalRecruitmentNoticeSourceKind,
   type PublicRentalSource,
   type PublicRentalSourceRecord,
   type RentalOffering,
 } from "./public-rental-location";
+export {
+  hasManualRecruitmentStatusEvidenceAt,
+  readRecruitmentNoticePeriodStateAt,
+  readRecruitmentStateAt,
+  type PublicRentalRecruitmentNoticePeriodState,
+  type PublicRentalRecruitmentState,
+  type PublicRentalRecruitmentStatus,
+} from "./recruitment-status";
 export {
   MAXIMUM_PUBLIC_RENTAL_BOOKMARKS,
   MAXIMUM_PUBLIC_RENTAL_LOCATION_IDENTIFIER_LENGTH,

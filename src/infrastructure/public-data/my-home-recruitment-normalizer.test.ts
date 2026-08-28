@@ -17,7 +17,10 @@ function testLhRecruitment() {
       complexName: "판교 국민임대",
       notice: {
         announcedAt: "2026-07-29",
+        applicationEndsAt: "2026-08-14",
+        applicationStartsAt: "2026-08-11",
         id: "19001",
+        sourceKind: "AUTOMATED_IMPORT",
         title: "판교 국민임대 입주자 모집공고",
         url: "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=19001",
       },
@@ -57,6 +60,8 @@ function createRecord(overrides: Record<string, string> = {}) {
     pblancId: "19001",
     pblancNm: "판교 국민임대 입주자 모집공고",
     rcritSttusNm: "접수중",
+    rcritBeginDe: "20260811",
+    rcritEndDe: "20260814",
     ...overrides,
   };
 }

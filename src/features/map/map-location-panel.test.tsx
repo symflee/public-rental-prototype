@@ -68,7 +68,7 @@ test("저장한 주택 필터와 목록의 저장 상태를 표시한다", () =>
   );
 
   expect(screen.getByText("저장됨")).toBeVisible();
-  expect(screen.getByText("수집 시 모집공고 없음")).toBeVisible();
+  expect(screen.getByText("현재 모집공고 없음")).toBeVisible();
   fireEvent.click(screen.getByRole("checkbox", { name: "저장한 주택만 보기" }));
   expect(onBookmarkedOnlyChange).toHaveBeenCalledWith(true);
 });
@@ -85,3 +85,40 @@ test("오래된 스냅샷이면 모집 상태 갱신 필요를 알린다", () =>
 
   expect(screen.getByRole("alert")).toHaveTextContent("모집 상태 갱신 필요");
 });
+
+test("오래된 스냅샷의 목록도 현재 공고 없음으로 단정하지 않는다", () => {
+  const location = createLocation();
+  render(
+    <MapLocationPanel
+      {...createProperties()}
+      generatedAt="2020-01-01T00:00:00.000Z"
+      locations={[location]}
+      status="verified"
+    />,
+  );
+
+  expect(screen.getByText("모집 상태 확인 필요")).toBeVisible();
+  expect(screen.queryByText("현재 모집공고 없음")).not.toBeInTheDocument();
+});
+
+function createLocation(): PublicRentalLocation {
+  return {
+    addressAliases: [],
+    completionDate: null,
+    coordinate: null,
+    district: "수정구",
+    householdCount: null,
+    id: "stale-location",
+    kind: "CONSTRUCTION_RENTAL_COMPLEX",
+    legalCategories: [],
+    municipality: "SEONGNAM",
+    name: "상태 확인 주택",
+    offerings: [],
+    parcelNumber: null,
+    properties: [],
+    provider: "LH",
+    recruitmentNotices: [],
+    roadAddress: "경기도 성남시",
+    sourceRecords: [],
+  };
+}

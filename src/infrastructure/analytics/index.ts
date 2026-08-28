@@ -19,10 +19,33 @@ export {
   purgeExpiredAnalyticsCounters,
   readAnalyticsDashboard,
   recordAnnouncementInterest,
-  recordLocationDetailView,
   recordAnnouncementOpen,
   recordPageView,
 } from "./analytics-counter-service";
+export {
+  clearHistoricalLocationDetailViews,
+  initializeLocationDetailViewStorage,
+  isHistoricalLocationDetailRunReady,
+  isLocationDetailViewStorageEnabled,
+  readLocationDetailViewBreakdown,
+  readLocationDetailViewSummary,
+  recordLocationDetailView,
+  seedHistoricalLocationDetailViews,
+} from "./location-detail-view-service";
+export {
+  createLocationDetailViewRepository,
+  createLocationDetailViewRepositoryWithExecutor,
+  type HistoricalAnalyticsRun,
+  type LocationDetailBreakdown,
+  type LocationDetailViewRepository,
+  type LocationDetailViewSqlExecutor,
+} from "./location-detail-view-repository";
+export { LOCATION_DETAIL_VIEW_SCHEMA_STATEMENTS } from "./location-detail-view-schema";
+export {
+  createHistoricalLocationDetailEvents,
+  HISTORICAL_ANALYTICS_RUN,
+  HISTORICAL_RECRUITMENT_NOTICE_FIXTURES,
+} from "./historical-location-detail-fixture";
 export { clearAnalyticsDashboardDemo, seedAnalyticsDashboardDemo } from "./analytics-demo-service";
 export { recordAnalyticsQuietly, recordAnalyticsSafely } from "./record-analytics";
 export {

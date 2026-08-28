@@ -28,6 +28,8 @@ vi.mock("@/infrastructure/public-data/public-rental-snapshot", () => ({
         recruitmentNotices: [
           {
             announcedAt: null,
+            applicationEndsAt: "2100-01-01",
+            applicationStartsAt: "2026-01-01",
             id: "20913",
             title: "공식 공고",
             url: "https://apply.lh.or.kr/notices/20913",

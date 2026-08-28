@@ -56,21 +56,51 @@ test("상세를 닫았다가 다시 열면 다시 기록한다", async () => {
   await waitFor(() => expect(mocks.recordLocationDetailView).toHaveBeenCalledTimes(2));
 });
 
-function AnalyticsProbe({ location }: Readonly<{ location: PublicRentalLocation | undefined }>) {
-  useLocationDetailAnalytics(location);
+test("오래된 스냅샷의 공고 부재는 클라이언트에서도 계측 요청하지 않는다", async () => {
+  render(<AnalyticsProbe location={createLocation("location-one", false)} reliable={false} />);
+
+  await waitFor(() => expect(mocks.recordLocationDetailView).not.toHaveBeenCalled());
+  expect(mocks.recordNoOpenNoticeLocationViewed).not.toHaveBeenCalled();
+});
+
+test("기간을 검토한 수기 공고가 있으면 오래된 스냅샷에서도 계측한다", async () => {
+  const location = createLocation("location-one", false, [CLOSED_MANUAL_NOTICE]);
+  render(<AnalyticsProbe location={location} reliable={false} />);
+
+  await waitFor(() => expect(mocks.recordLocationDetailView).toHaveBeenCalledWith("location-one"));
+  expect(mocks.recordNoOpenNoticeLocationViewed).toHaveBeenCalledWith("location-one");
+});
+
+function AnalyticsProbe({
+  location,
+  reliable = true,
+}: Readonly<{ location: PublicRentalLocation | undefined; reliable?: boolean }>) {
+  useLocationDetailAnalytics(location, reliable);
   return null;
 }
 
-function createLocation(locationId: string, hasOpenNotice: boolean): PublicRentalLocation {
+function createLocation(
+  locationId: string,
+  hasOpenNotice: boolean,
+  recruitmentNotices: PublicRentalLocation["recruitmentNotices"] = [],
+): PublicRentalLocation {
   if (hasOpenNotice) return { ...BASE_LOCATION, id: locationId, recruitmentNotices: [NOTICE] };
-  return { ...BASE_LOCATION, id: locationId, recruitmentNotices: [] };
+  return { ...BASE_LOCATION, id: locationId, recruitmentNotices };
 }
 
 const NOTICE = {
   announcedAt: "2026-08-01",
+  applicationEndsAt: "2100-01-01",
+  applicationStartsAt: "2026-01-01",
   id: "notice-one",
   title: "모집공고",
   url: "https://www.myhome.go.kr/notice-one",
+};
+
+const CLOSED_MANUAL_NOTICE = {
+  ...NOTICE,
+  applicationEndsAt: "2026-08-14",
+  sourceKind: "MANUAL_REVIEW" as const,
 };
 
 const BASE_LOCATION: PublicRentalLocation = {

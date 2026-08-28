@@ -9,6 +9,11 @@ import { isPublicRentalSnapshotFresh } from "@/domain/public-rental";
 
 import { MapLocationDetail } from "./map-location-detail";
 import {
+  isRecruitmentAbsenceReliable,
+  readManualRecruitmentTiming,
+  readMapRecruitmentState,
+} from "./map-recruitment-status";
+import {
   CATEGORY_PRESENTATIONS,
   createLegalCategoryText,
   readMunicipalityLabel,
@@ -96,6 +101,7 @@ function MobileSheetToggle(properties: MapLocationPanelProperties) {
 }
 
 function PanelBody(properties: MapLocationPanelProperties) {
+  const absenceReliable = readRecruitmentAbsenceReliability(properties);
   return (
     <div className={createPanelBodyClass(properties.expanded)}>
       <MapFilters {...properties} />
@@ -104,6 +110,7 @@ function PanelBody(properties: MapLocationPanelProperties) {
         bookmarkMessage={properties.bookmarkMessage}
         location={properties.selectedLocation}
         onBookmarkToggle={properties.onBookmarkToggle}
+        recruitmentAbsenceReliable={absenceReliable}
       />
       <LocationList {...properties} />
     </div>
@@ -271,6 +278,7 @@ function LocationList(properties: MapLocationPanelProperties) {
           location={location}
           bookmarked={isBookmarked(properties, location.id)}
           onSelect={properties.onSelect}
+          recruitmentAbsenceReliable={readRecruitmentAbsenceReliability(properties)}
           selected={location.id === properties.selectedLocationId}
         />
       ))}
@@ -304,6 +312,7 @@ function LocationListItem(properties: {
   bookmarked: boolean;
   location: PublicRentalLocation;
   onSelect: LocationSelectionHandler;
+  recruitmentAbsenceReliable: boolean;
   selected: boolean;
 }) {
   return (
@@ -318,6 +327,7 @@ function LocationListItem(properties: {
         <LocationListItemContent
           bookmarked={properties.bookmarked}
           location={properties.location}
+          recruitmentAbsenceReliable={properties.recruitmentAbsenceReliable}
         />
       </button>
     </li>
@@ -327,29 +337,51 @@ function LocationListItem(properties: {
 function LocationListItemContent({
   bookmarked,
   location,
-}: Readonly<{ bookmarked: boolean; location: PublicRentalLocation }>) {
+  recruitmentAbsenceReliable,
+}: Readonly<{
+  bookmarked: boolean;
+  location: PublicRentalLocation;
+  recruitmentAbsenceReliable: boolean;
+}>) {
   return (
     <>
       <span className="block font-semibold text-slate-950">{location.name}</span>
       <span className="mt-1 block text-xs font-medium text-emerald-700">
         {createLegalCategoryText(location.legalCategories)}
       </span>
-      <RecruitmentBadge location={location} />
+      <RecruitmentBadge
+        location={location}
+        recruitmentAbsenceReliable={recruitmentAbsenceReliable}
+      />
       <BookmarkBadge bookmarked={bookmarked} />
       <span className="mt-1 block text-xs leading-5 text-slate-600">{location.roadAddress}</span>
     </>
   );
 }
 
-function RecruitmentBadge({ location }: Readonly<{ location: PublicRentalLocation }>) {
-  if (location.recruitmentNotices?.length) {
+function RecruitmentBadge({
+  location,
+  recruitmentAbsenceReliable,
+}: Readonly<{ location: PublicRentalLocation; recruitmentAbsenceReliable: boolean }>) {
+  const state = readMapRecruitmentState(location, recruitmentAbsenceReliable);
+  if (state.status === "OPEN") {
     return (
-      <span className="mt-1 inline-block text-xs font-semibold text-amber-700">
-        수집 시 모집 중
-      </span>
+      <span className="mt-1 inline-block text-xs font-semibold text-amber-700">현재 모집 중</span>
     );
   }
-  return <span className="mt-1 block text-xs text-slate-500">수집 시 모집공고 없음</span>;
+  if (state.status === "UNKNOWN") {
+    return <span className="mt-1 block text-xs text-slate-500">모집 상태 확인 필요</span>;
+  }
+  const manualTiming = readManualRecruitmentTiming(location);
+  if (manualTiming === "UPCOMING")
+    return <span className="mt-1 block text-xs text-sky-700">모집 예정 · 수기 연결</span>;
+  if (manualTiming === "CLOSED")
+    return <span className="mt-1 block text-xs text-slate-500">지난 공고 · 수기 연결</span>;
+  return <span className="mt-1 block text-xs text-slate-500">현재 모집공고 없음</span>;
+}
+
+function readRecruitmentAbsenceReliability(properties: MapLocationPanelProperties) {
+  return isRecruitmentAbsenceReliable(properties.generatedAt, properties.status);
 }
 
 function BookmarkBadge({ bookmarked }: Readonly<{ bookmarked: boolean }>) {

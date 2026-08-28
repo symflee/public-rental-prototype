@@ -15,7 +15,16 @@ vi.mock("@/infrastructure/public-data/public-rental-snapshot", () => ({
   publicRentalSnapshot: {
     locations: [
       { id: "unlinked", recruitmentNotices: [] },
-      { id: "linked", recruitmentNotices: [{ id: "20913" }] },
+      {
+        id: "linked",
+        recruitmentNotices: [
+          {
+            applicationEndsAt: "2100-01-01",
+            applicationStartsAt: "2026-01-01",
+            id: "20913",
+          },
+        ],
+      },
     ],
   },
 }));

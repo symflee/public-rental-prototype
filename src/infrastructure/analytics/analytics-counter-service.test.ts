@@ -7,6 +7,13 @@ const repository = vi.hoisted(() => ({
   purgeBefore: vi.fn(async () => undefined),
   read: vi.fn(async () => []),
 }));
+const detailViews = vi.hoisted(() => ({
+  initialize: vi.fn(async () => undefined),
+  readSummary: vi.fn(async () => ({
+    noOpenNoticeLocationDetailViewCount: 52,
+    openNoticeLocationDetailViewCount: 80,
+  })),
+}));
 
 vi.mock("./analytics-counter-repository", () => ({
   createAnalyticsCounterRepository: () => repository,
@@ -14,36 +21,31 @@ vi.mock("./analytics-counter-repository", () => ({
 vi.mock("./experiment-event-service", () => ({
   initializeExperimentAnalyticsStorage: vi.fn(async () => undefined),
 }));
+vi.mock("./location-detail-view-service", () => ({
+  initializeLocationDetailViewStorage: detailViews.initialize,
+  readLocationDetailViewSummary: detailViews.readSummary,
+}));
+vi.mock("@/infrastructure/manual-recruitment", () => ({
+  initializeManualRecruitmentStorage: vi.fn(async () => undefined),
+}));
 
-import { recordLocationDetailView } from "./analytics-counter-service";
+import { readAnalyticsDashboard } from "./analytics-counter-service";
 
 beforeEach(() => vi.clearAllMocks());
 
-test("모집공고가 있는 단지 상세 조회를 사이트 전체 카운터로 기록한다", async () => {
-  await recordLocationDetailView("location-one", true);
+test("선택한 데이터셋의 개별 상세 조회를 대시보드에 사용한다", async () => {
+  const range = { from: "2026-08-11", to: "2026-08-14" };
+  const dashboard = await readAnalyticsDashboard(range, "historical-2026-08-11-14-v1");
 
-  expect(repository.increment).toHaveBeenCalledWith(
-    expect.objectContaining({
-      eventKind: "OPEN_NOTICE_LOCATION_DETAIL_VIEW",
-      subjectId: "all",
-      subjectKind: "SITE",
-    }),
-  );
+  expect(detailViews.readSummary).toHaveBeenCalledWith("historical-2026-08-11-14-v1", range);
+  expect(dashboard.locationDetailViewCount).toBe(132);
+  expect(dashboard.noOpenNoticeLocationDetailViewCount).toBe(52);
 });
 
-test("모집공고가 없는 단지 상세 조회를 사이트 전체 카운터로 기록한다", async () => {
-  await recordLocationDetailView("location-one", false);
+test("새 상세 조회 테이블 장애를 구형 카운터로 숨기지 않는다", async () => {
+  detailViews.readSummary.mockRejectedValueOnce(new Error("missing table"));
 
-  expect(repository.increment).toHaveBeenCalledWith(
-    expect.objectContaining({
-      eventKind: "NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW",
-      subjectId: "all",
-      subjectKind: "SITE",
-    }),
+  await expect(readAnalyticsDashboard({ from: "2026-08-11", to: "2026-08-14" })).rejects.toThrow(
+    "missing table",
   );
-});
-
-test("빈 단지 식별자는 상세 조회로 기록하지 않는다", async () => {
-  await expect(recordLocationDetailView(" ", false)).rejects.toThrow("단지 식별자");
-  expect(repository.increment).not.toHaveBeenCalled();
 });

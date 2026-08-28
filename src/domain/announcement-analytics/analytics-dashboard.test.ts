@@ -34,6 +34,18 @@ test("단지 상세 조회가 없으면 비모집 상세 조회 비율은 0이�
   expect(dashboard.noOpenNoticeLocationDetailViewRate).toBe(0);
 });
 
+test("개별 상세 조회 원본 집계가 일별 카운터보다 우선한다", () => {
+  const counters = [counter("OPEN_NOTICE_LOCATION_DETAIL_VIEW", "SITE", "legacy", 732)];
+  const dashboard = createAnalyticsDashboard(counters, {
+    noOpenNoticeLocationDetailViewCount: 52,
+    openNoticeLocationDetailViewCount: 80,
+  });
+
+  expect(dashboard.locationDetailViewCount).toBe(132);
+  expect(dashboard.noOpenNoticeLocationDetailViewCount).toBe(52);
+  expect(dashboard.noOpenNoticeLocationDetailViewRate).toBe((52 / 132) * 100);
+});
+
 function counter(
   eventKind:
     | "PAGE_VIEW"

@@ -116,10 +116,10 @@ function createDatabaseCounter() {
 
 function createDemoDays(): AnalyticsDashboardDemoDays {
   return [
-    createDemoDay("2026-08-11", 80, 88),
-    createDemoDay("2026-08-12", 85, 94),
-    createDemoDay("2026-08-13", 87, 99),
-    createDemoDay("2026-08-14", 92, 107),
+    createDemoDay("2026-08-11", 22, 10),
+    createDemoDay("2026-08-12", 24, 12),
+    createDemoDay("2026-08-13", 21, 14),
+    createDemoDay("2026-08-14", 13, 16),
   ];
 }
 
@@ -150,5 +150,5 @@ function expectDemoDelete(statement: unknown) {
 }
 
 function createDemoParameters() {
-  return ["2026-08-11", 80, 88, "2026-08-12", 85, 94, "2026-08-13", 87, 99, "2026-08-14", 92, 107];
+  return ["2026-08-11", 22, 10, "2026-08-12", 24, 12, "2026-08-13", 21, 14, "2026-08-14", 13, 16];
 }

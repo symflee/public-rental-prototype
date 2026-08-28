@@ -1,4 +1,5 @@
 import type { AnalyticsCounter, AnalyticsEventKind } from "./analytics-counter";
+import type { LocationDetailViewSummary } from "./location-detail-view";
 
 export type AnalyticsRank = Readonly<{
   subjectId: string;
@@ -28,8 +29,9 @@ type DashboardCounts = Readonly<{
 
 export function createAnalyticsDashboard(
   counters: readonly AnalyticsCounter[],
+  locationDetailSummary?: LocationDetailViewSummary,
 ): AnalyticsDashboard {
-  return createDashboard(createDashboardCounts(counters), counters);
+  return createDashboard(createDashboardCounts(counters, locationDetailSummary), counters);
 }
 
 function createDashboard(
@@ -47,13 +49,27 @@ function createDashboard(
   };
 }
 
-function createDashboardCounts(counters: readonly AnalyticsCounter[]): DashboardCounts {
+function createDashboardCounts(
+  counters: readonly AnalyticsCounter[],
+  locationDetailSummary: LocationDetailViewSummary | undefined,
+): DashboardCounts {
+  const detailCounts = readLocationDetailCounts(counters, locationDetailSummary);
   return {
     announcementInterestCount: sumEventCounters(counters, "ANNOUNCEMENT_INTEREST"),
     announcementOpenCount: sumEventCounters(counters, "ANNOUNCEMENT_OPEN"),
+    ...detailCounts,
+    pageViewCount: sumEventCounters(counters, "PAGE_VIEW"),
+  };
+}
+
+function readLocationDetailCounts(
+  counters: readonly AnalyticsCounter[],
+  summary: LocationDetailViewSummary | undefined,
+) {
+  if (summary) return summary;
+  return {
     noOpenNoticeLocationDetailViewCount: sumNoOpenDetailViews(counters),
     openNoticeLocationDetailViewCount: sumOpenDetailViews(counters),
-    pageViewCount: sumEventCounters(counters, "PAGE_VIEW"),
   };
 }
 

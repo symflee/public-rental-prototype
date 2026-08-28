@@ -1,4 +1,6 @@
+import { readRecruitmentStateAt } from "@/domain/public-rental";
 import { recordAnalyticsQuietly, recordAnnouncementInterest } from "@/infrastructure/analytics";
+import { readLocationsWithManualRecruitmentNotices } from "@/infrastructure/manual-recruitment/manual-recruitment-overlay";
 import { publicRentalSnapshot } from "@/infrastructure/public-data/public-rental-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -6,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const locationId = await readLocationId(request);
   if (!locationId) return createInvalidRequestResponse();
-  if (!isUnlinkedLocation(locationId)) return createUnknownLocationResponse();
+  if (!(await isNoOpenNoticeLocation(locationId))) return createUnknownLocationResponse();
   await recordAnalyticsQuietly(() => recordAnnouncementInterest(locationId));
   return Response.json({ recorded: true }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -26,10 +28,11 @@ function readLocationIdFromBody(value: unknown) {
   return value.locationId;
 }
 
-function isUnlinkedLocation(locationId: string) {
-  const location = publicRentalSnapshot.locations.find((candidate) => candidate.id === locationId);
+async function isNoOpenNoticeLocation(locationId: string) {
+  const locations = await readLocationsWithManualRecruitmentNotices(publicRentalSnapshot.locations);
+  const location = locations.find((candidate) => candidate.id === locationId);
   if (!location) return false;
-  return !location.recruitmentNotices || location.recruitmentNotices.length === 0;
+  return readRecruitmentStateAt(location, new Date()).status === "NO_OPEN";
 }
 
 function createInvalidRequestResponse() {

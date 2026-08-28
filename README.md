@@ -150,8 +150,8 @@ pnpm collect:public-rentals:api
 | `pnpm collect:public-rentals:gyeonggi` | 경기도 API 스냅샷·모집공고·좌표 생성   |
 | `pnpm collect:public-rentals:api`      | API 검수 산출물을 별도 생성            |
 | `pnpm analytics:schema`                | Neon 분석 테이블·제약 준비             |
-| `pnpm analytics:seed-demo`             | 최근 4일 대시보드 샘플 데이터 적재     |
-| `pnpm analytics:clear-demo`            | 대시보드 샘플 데이터만 제거            |
+| `pnpm analytics:seed-history`          | 8월 11~14일 재구성 조회 기록 적재      |
+| `pnpm analytics:clear-history`         | 재구성 조회 기록만 제거                |
 | `pnpm lint`                            | ESLint 검사                            |
 | `pnpm format:check`                    | Prettier 검사                          |
 | `pnpm typecheck`                       | TypeScript strict 타입 검사            |
@@ -175,9 +175,10 @@ pnpm exec playwright install chromium
 - 실제 공고 열람 클릭 수
 - 미연결 단지의 공고 확인 의향 클릭 수
 
-주택 상세 조회는 서버가 스냅샷의 모집공고 연결 상태를 확인한 뒤 일별 합계만 저장합니다. 같은
-주택을 다시 열거나 새로고침한 행동도 새로운 조회 건수에 포함될 수 있으며, 이 카운터에는 방문자
-식별자나 위치 ID를 저장하지 않습니다.
+주택 상세 조회는 서버가 현재 스냅샷과 수기 연결 공고의 모집 기간을 확인한 뒤 조회 시각, 위치 ID,
+당시 모집 상태와 판정 출처를 별도 이벤트로 저장합니다. 같은 주택을 닫았다 다시 열거나 A→B→A로
+이동한 행동은 각각 새 조회로 기록하며 단순 재렌더는 중복 기록하지 않습니다. 방문자 식별자, IP,
+User-Agent와 브라우저 지문은 저장하지 않습니다.
 
 관심 주택 기능의 기존 행동 분석은 30일 first-party HttpOnly 쿠키로 같은 익명 브라우저를 구분합니다.
 DB에는 쿠키 원문이 아닌 서버 HMAC 해시만 저장하며 IP 주소, User-Agent와 브라우저 지문은
@@ -197,6 +198,7 @@ Vercel Marketplace에서 Neon을 연결한 뒤 연결 문자열과 아래 서버
 DATABASE_URL=Neon_연결_문자열
 ANALYTICS_ADMIN_USERNAME=관리자_아이디
 ANALYTICS_ADMIN_PASSWORD=긴_관리자_비밀번호
+ANALYTICS_MIGRATION_TOKEN=배포_작업_중에만_사용할_32바이트_이상_난수
 CRON_SECRET=16자_이상_난수
 ANALYTICS_VISITOR_HASH_SECRET=32자_이상의_서버_비밀값
 ```
@@ -207,31 +209,44 @@ pnpm analytics:schema
 
 Vercel의 Sensitive 환경 변수는 로컬 CLI로 내려받을 수 없으므로, 로컬에 Neon 연결 문자열을
 두지 않는 경우에는 Neon SQL Editor에서
-[`database/analytics-schema.sql`](database/analytics-schema.sql)을 한 번 실행합니다.
+[`database/analytics-schema.sql`](database/analytics-schema.sql)을 한 번 실행합니다. 이 파일은
+일별 서비스 지표, 개별 주택 조회 기록, 분석 실행 이력과 수기 모집공고 테이블을 모두 준비합니다.
+배포 환경에서 직접 준비할 때는 임시 `ANALYTICS_MIGRATION_TOKEN`을 설정한 배포에
+`POST /api/operations/analytics-history`를 Bearer 인증으로 한 번 호출합니다. 응답의
+`132/52/39.4`를 확인한 뒤 토큰을 제거하면 이 작업 API는 다시 사용할 수 없습니다.
 
-`/admin/analytics`는 HTTP Basic 인증으로 보호됩니다. 지도·주택 상세·공고 확인 행동 횟수와
-현재 연결된 모집공고가 없는 주택 상세 조회 비율을 표시합니다. 북마크 관련 지표와 가설 판정은
-관리자 화면에 표시하지 않습니다. Neon
+`/admin/analytics`는 HTTP Basic 인증으로 보호됩니다. 운영 데이터 화면은
+`/admin/analytics?period=7d`, 8월 11~14일 기록은 `/admin/analytics?dataset=history`, 주택별 내역은
+`/admin/analytics/runs/2026-08-11-14`에서 확인합니다. 지도·주택 상세·공고 확인 행동 횟수와 현재
+모집 중이 아닌 주택 상세 조회 비율을 표시하며 북마크 관련 지표와 가설 판정은 표시하지 않습니다.
+Neon
 콘솔에서 직접 추출할 SQL은 [`database/analytics-queries.sql`](database/analytics-queries.sql)에
 있습니다. Vercel Cron은 매일 한국 시간 자정 무렵 90일이 지난 익명 실험 이벤트와 1년이 지난
 일별 카운터를 삭제합니다.
 
-데모 화면에는 최근 4일에 걸친 전체 주택 정보 조회 732건과 비모집 주택 조회 388건을 넣을 수
-있습니다. 샘플은 실제 카운터와 다른 `dashboard-demo-v1` 식별자로 저장되어 다시 실행해도
-중복되지 않으며 별도로 제거할 수 있습니다.
+수기 모집공고는 `/admin/recruitment-notices`에서 공식 LH 공고 URL, 공고일, 모집 시작·종료 시각과
+연결할 주택 ID를 입력합니다. 이 데이터는 정적 스냅샷을 덮어쓰지 않고 지도 API 응답에 합쳐지며,
+기간 전에는 `모집 예정 · 수기 연결`, 기간 안에는 `현재 모집 중 · 수기 연결`, 기간이 지나면
+`지난 공고 · 수기 연결`로 표시됩니다.
+
+제출된 관측값은 2026년 8월 11~14일의 전체 조회 132건, 비모집 조회 52건(39.4%)입니다. 원시
+로그가 남아 있지 않아 개별 시각과 주택별 횟수는 제출 합계, 공식 공고 기간과 당시 수기 연결
+대상을 제약으로 삼아 결정적으로 재구성합니다. 따라서 화면과 DB에는 `재구성 데이터`로 명시하며
+실제 원시 로그라고 표현하지 않습니다. 적재 명령은 같은 데이터셋을 한 SQL 문에서 교체한 뒤
+동결하므로 다시 실행해도 132건보다 늘어나지 않습니다.
 
 ```bash
-pnpm analytics:seed-demo
-pnpm analytics:clear-demo
+pnpm analytics:seed-history
+pnpm analytics:clear-history
 ```
 
-로컬에 운영 DB 연결 문자열을 두지 않는 경우에는 Neon SQL Editor에서
-[`database/analytics-demo-seed.sql`](database/analytics-demo-seed.sql) 또는
-[`database/analytics-demo-clear.sql`](database/analytics-demo-clear.sql)을 실행합니다.
-
-모집 상태가 오래되어 지표가 오염되지 않도록 스냅샷 생성 후 72시간이 지나면 신규 주택 상세
-조회와 실험 계측을 자동 중지합니다. 운영 중 최소 3일마다 아래 명령으로 데이터를 갱신한 뒤
-배포해야 합니다.
+실제 운영 조회는 `live`, 재구성 기록은 `historical-2026-08-11-14-v1` 데이터셋으로 분리됩니다.
+현재 상태는 조회 순간의 모집 기간으로 판정합니다. 검증된 스냅샷이 72시간을 넘겼거나 일부 수집
+상태이면 공고 부재를 확정하지 않고 해당 조회의 계측을 중단합니다. 다만 기간까지 검토해 저장한
+수기 공고가 있는 주택은 해당 근거를 `MANUAL_REVIEW`로 남기고 종료·예정 상태의 비모집 조회를
+계측합니다. 수기 공고 DB를 읽지 못한 경우에도 비모집으로 대체하지 않고 지도 API와 계측 요청이
+실패하도록 해 지표 오염을 막습니다.
+운영 스냅샷 갱신은 아래 명령을 사용합니다.
 
 ```bash
 pnpm collect:public-rentals:gyeonggi

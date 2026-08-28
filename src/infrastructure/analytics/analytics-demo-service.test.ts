@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 const repository = vi.hoisted(() => ({
   clearAnalyticsDashboardDemo: vi.fn(async () => undefined),
@@ -13,22 +13,16 @@ import { clearAnalyticsDashboardDemo, seedAnalyticsDashboardDemo } from "./analy
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-08-13T15:30:00.000Z"));
 });
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-test("KST 기준일을 포함한 최근 4일의 데모 카운터를 저장한다", async () => {
+test("8월 11~14일의 132건 데모 카운터를 저장한다", async () => {
   await seedAnalyticsDashboardDemo();
 
   expect(repository.replaceAnalyticsDashboardDemo).toHaveBeenCalledWith([
-    createDemoDay("2026-08-11", 80, 88),
-    createDemoDay("2026-08-12", 85, 94),
-    createDemoDay("2026-08-13", 87, 99),
-    createDemoDay("2026-08-14", 92, 107),
+    createDemoDay("2026-08-11", 22, 10),
+    createDemoDay("2026-08-12", 24, 12),
+    createDemoDay("2026-08-13", 21, 14),
+    createDemoDay("2026-08-14", 13, 16),
   ]);
 });
 

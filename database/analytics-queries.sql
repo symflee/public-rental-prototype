@@ -44,24 +44,22 @@ WHERE metric_date BETWEEN selected_range.from_date AND selected_range.to_date
 GROUP BY subject_id
 ORDER BY announcement_interest_count DESC, location_id ASC;
 
--- 전체 주택 정보 조회수, 공고 중이 아닌 주택 조회수와 비율
+-- 운영 데이터의 전체 주택 정보 조회수, 공고 중이 아닌 주택 조회수와 비율
 WITH selected_range AS (
   SELECT CURRENT_DATE - INTERVAL '29 days' AS from_date, CURRENT_DATE AS to_date
 ),
 detail_view_counts AS (
   SELECT
-    COALESCE(SUM(total) FILTER (
-      WHERE event_kind IN (
-        'OPEN_NOTICE_LOCATION_DETAIL_VIEW',
-        'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW'
-      )
-    ), 0) AS location_detail_view_count,
-    COALESCE(SUM(total) FILTER (
-      WHERE event_kind = 'NO_OPEN_NOTICE_LOCATION_DETAIL_VIEW'
-    ), 0) AS no_open_notice_location_detail_view_count
-  FROM analytics_daily_counters
+    COUNT(*) FILTER (
+      WHERE notice_state IN ('OPEN', 'NO_OPEN')
+    ) AS location_detail_view_count,
+    COUNT(*) FILTER (
+      WHERE notice_state = 'NO_OPEN'
+    ) AS no_open_notice_location_detail_view_count
+  FROM analytics_location_detail_views
   CROSS JOIN selected_range
-  WHERE metric_date BETWEEN selected_range.from_date AND selected_range.to_date
+  WHERE dataset_id = 'live'
+    AND metric_date BETWEEN selected_range.from_date AND selected_range.to_date
 )
 SELECT
   location_detail_view_count,
@@ -75,3 +73,15 @@ SELECT
     0
   ) AS no_open_notice_location_detail_view_rate_percent
 FROM detail_view_counts;
+
+-- 2026년 8월 11~14일 재구성 데이터의 주택별 조회 내역
+SELECT
+  location_id,
+  COUNT(*) FILTER (WHERE notice_state = 'OPEN') AS open_view_count,
+  COUNT(*) FILTER (WHERE notice_state = 'NO_OPEN') AS no_open_view_count,
+  COUNT(*) AS total_view_count
+FROM analytics_location_detail_views
+WHERE dataset_id = 'historical-2026-08-11-14-v1'
+  AND metric_date BETWEEN DATE '2026-08-11' AND DATE '2026-08-14'
+GROUP BY location_id
+ORDER BY total_view_count DESC, location_id ASC;
