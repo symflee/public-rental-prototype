@@ -166,7 +166,7 @@ function RecruitmentAlertControl({
   locationId,
   recruitmentState,
 }: Readonly<{ locationId: string; recruitmentState: PublicRentalRecruitmentState }>) {
-  if (recruitmentState.status !== "NO_OPEN") return null;
+  if (recruitmentState.status === "OPEN") return null;
   return <RecruitmentAlertSignup locationId={locationId} />;
 }
 

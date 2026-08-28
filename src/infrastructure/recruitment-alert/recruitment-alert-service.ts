@@ -1,6 +1,4 @@
 import {
-  hasManualRecruitmentStatusEvidenceAt,
-  isPublicRentalSnapshotFresh,
   MAXIMUM_PUBLIC_RENTAL_LOCATION_IDENTIFIER_LENGTH,
   readRecruitmentStateAt,
   type PublicRentalLocation,
@@ -117,30 +115,13 @@ async function readEligibleLocation(
   const locations = await dependencies.readLocations(dependencies.snapshot.locations);
   const location = locations.find((candidate) => candidate.id === locationId);
   if (!location) throw new RecruitmentAlertLocationNotFoundError("단지를 찾을 수 없습니다.");
-  assertNoOpenRecruitment(location, now, dependencies.snapshot);
+  assertNoOpenRecruitment(location, now);
   return location;
 }
 
-function assertNoOpenRecruitment(
-  location: PublicRentalLocation,
-  now: Date,
-  snapshot: RecruitmentAlertSnapshot,
-) {
+function assertNoOpenRecruitment(location: PublicRentalLocation, now: Date) {
   const state = readRecruitmentStateAt(location, now);
   if (state.status === "OPEN") throw new RecruitmentAlertConflictError("이미 모집 중입니다.");
-  if (state.status === "UNKNOWN") throw new RecruitmentAlertStatusUnavailableError();
-  if (hasReliableNoOpenEvidence(location, now, snapshot)) return;
-  throw new RecruitmentAlertStatusUnavailableError();
-}
-
-function hasReliableNoOpenEvidence(
-  location: PublicRentalLocation,
-  now: Date,
-  snapshot: RecruitmentAlertSnapshot,
-) {
-  if (hasManualRecruitmentStatusEvidenceAt(location, now)) return true;
-  if (snapshot.status !== "verified") return false;
-  return isPublicRentalSnapshotFresh(snapshot.generatedAt, now);
 }
 
 function createSubscription(

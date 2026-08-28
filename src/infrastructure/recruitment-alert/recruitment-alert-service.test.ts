@@ -5,7 +5,6 @@ import type { PublicRentalLocation, PublicRentalRecruitmentNotice } from "@/doma
 import {
   RecruitmentAlertConflictError,
   RecruitmentAlertLocationNotFoundError,
-  RecruitmentAlertStatusUnavailableError,
   RecruitmentAlertValidationError,
   initializeRecruitmentAlertStorage,
   purgeRecruitmentAlertSubscriptions,
@@ -85,7 +84,7 @@ test("현재 모집 중인 단지에는 다음 공고 알림을 신청하지 않
   expect(append).not.toHaveBeenCalled();
 });
 
-test("기간을 알 수 없는 공고 또는 오래된 스냅샷은 NO_OPEN으로 추측하지 않는다", async () => {
+test("기간을 알 수 없는 공고와 오래된 스냅샷도 이메일 알림 대상으로 받는다", async () => {
   const unknownNotice = {
     announcedAt: null,
     id: "unknown",
@@ -95,17 +94,18 @@ test("기간을 알 수 없는 공고 또는 오래된 스냅샷은 NO_OPEN으�
   const unknown = createDependencies([createLocation([unknownNotice])]);
   const stale = createDependencies([createLocation()], "2026-01-01T00:00:00.000Z");
 
-  await expectUnavailable(unknown);
-  await expectUnavailable(stale);
-  expect(append).not.toHaveBeenCalled();
+  await subscribeRecruitmentAlert(createInput(), NOW, unknown);
+  await subscribeRecruitmentAlert(createInput(), NOW, stale);
+
+  expect(append).toHaveBeenCalledTimes(2);
 });
 
-test("검증되지 않은 부분 스냅샷의 공고 없음도 NO_OPEN으로 추측하지 않는다", async () => {
+test("검증되지 않은 부분 스냅샷의 공고 없음도 이메일 알림 대상으로 받는다", async () => {
   const dependencies = createDependencies([createLocation()], NOW.toISOString(), "partial");
 
-  await expectUnavailable(dependencies);
+  await subscribeRecruitmentAlert(createInput(), NOW, dependencies);
 
-  expect(append).not.toHaveBeenCalled();
+  expect(append).toHaveBeenCalledTimes(1);
 });
 
 test("기간을 검토한 종료 수기 공고는 오래된 스냅샷에서도 비모집 근거가 된다", async () => {
@@ -143,12 +143,6 @@ test("수기 공고 저장소 조회 실패 시 정적 스냅샷으로 대체하
 async function expectInvalid(input: object, dependencies: RecruitmentAlertServiceDependencies) {
   await expect(subscribeRecruitmentAlert(input, NOW, dependencies)).rejects.toBeInstanceOf(
     RecruitmentAlertValidationError,
-  );
-}
-
-async function expectUnavailable(dependencies: RecruitmentAlertServiceDependencies) {
-  await expect(subscribeRecruitmentAlert(createInput(), NOW, dependencies)).rejects.toBeInstanceOf(
-    RecruitmentAlertStatusUnavailableError,
   );
 }
 

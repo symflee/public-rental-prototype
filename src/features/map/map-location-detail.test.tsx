@@ -127,7 +127,7 @@ test("아직 시작하지 않은 수기 공고를 모집 예정으로 표시한�
   expect(screen.getByRole("heading", { level: 3, name: "예정 모집공고" })).toBeVisible();
 });
 
-test("오래된 스냅샷의 공고 부재를 현재 공고 없음으로 단정하지 않는다", () => {
+test("모집 상태 확인이 필요한 주택도 이메일 알림을 신청할 수 있다", () => {
   render(
     <MapLocationDetail
       location={createDandaeHappyHousingLocation()}
@@ -137,7 +137,7 @@ test("오래된 스냅샷의 공고 부재를 현재 공고 없음으로 단정�
 
   expect(screen.getByText("모집 상태 확인 필요")).toBeVisible();
   expect(screen.queryByText("현재 모집공고 없음")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "공고 시작하면 메일 받기" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "공고 시작하면 메일 받기" })).toBeVisible();
 });
 
 test("DB에 저장된 모집 시각을 한국 시각으로 표시한다", () => {
