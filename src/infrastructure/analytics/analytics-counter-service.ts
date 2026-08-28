@@ -8,6 +8,7 @@ import {
   type AnalyticsDateRange,
 } from "@/domain/announcement-analytics";
 import { initializeManualRecruitmentStorage } from "@/infrastructure/manual-recruitment";
+import { initializeRecruitmentAlertStorage } from "@/infrastructure/recruitment-alert";
 
 import { createAnalyticsCounterRepository } from "./analytics-counter-repository";
 import { initializeExperimentAnalyticsStorage } from "./experiment-event-service";
@@ -46,6 +47,7 @@ export function initializeAnalyticsStorage() {
     initializeExperimentAnalyticsStorage(),
     initializeLocationDetailViewStorage(),
     initializeManualRecruitmentStorage(),
+    initializeRecruitmentAlertStorage(),
   ]);
 }
 

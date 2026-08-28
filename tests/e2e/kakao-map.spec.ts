@@ -60,14 +60,30 @@ test.describe("데스크톱 경기도 LH 임대주택 지도", () => {
     await expect.poll(() => readLocationCount(page)).toBeGreaterThan(0);
   });
 
-  test("공고가 없는 단지의 확인 의향과 개인정보처리방침을 제공한다", async ({ page }) => {
+  test("공고가 없는 단지의 다음 공고 이메일 알림을 신청한다", async ({ page }) => {
     await mockIndividualLocationData(page);
+    await mockRecruitmentAlertSubscription(page);
     await openReadyMap(page);
     await selectFirstListLocation(page);
 
-    await page.getByRole("button", { name: "공고 확인해보기" }).click();
-    await expect(page.getByText("현재 이 단지에 등록된 모집 공고가 없습니다.")).toBeVisible();
-    await expect(page.getByRole("link", { name: "개인정보처리방침" })).toBeVisible();
+    const detail = readLocationDetail(page);
+    await detail.getByRole("button", { name: "공고 시작하면 메일 받기" }).click();
+    await expect(detail.getByRole("link", { name: "개인정보처리방침" })).toBeVisible();
+    await detail.getByRole("textbox", { name: "이메일" }).fill("user@example.com");
+    await detail.getByRole("checkbox", { name: /개인정보 수집.*동의/u }).check();
+    const requestPromise = page.waitForRequest("**/api/recruitment-alert-subscriptions");
+    await detail.getByRole("button", { name: "알림 신청" }).click();
+
+    const request = await requestPromise;
+    expect(request.method()).toBe("POST");
+    expect(request.postDataJSON()).toMatchObject({
+      email: "user@example.com",
+      locationId: "e2e-unlinked-location",
+      privacyConsent: true,
+    });
+    await expect(
+      detail.getByText("알림 신청이 저장되었습니다. 공고를 확인하면 운영자가 이메일로 안내합니다."),
+    ).toBeVisible();
   });
 
   test("공고 없는 주택을 저장하고 재방문 뒤에도 복원한다", async ({ page }) => {
@@ -212,7 +228,7 @@ async function expectLocationCount(page: Page, count: number) {
 }
 
 async function expectBookmarkStorageDescription(detail: ReturnType<typeof readLocationDetail>) {
-  const description = "이 브라우저에만 저장되며 모집 알림은 아직 제공하지 않습니다.";
+  const description = "이 브라우저에서 다시 찾기 위한 저장입니다.";
   await expect(detail.getByText(description)).toBeVisible();
 }
 
@@ -246,11 +262,13 @@ function readLocationDetail(page: Page) {
 }
 
 async function mockIndividualLocationData(page: Page) {
-  await page.route("**/api/public-rentals?**", (route) =>
-    route.fulfill({
-      body: JSON.stringify(createIndividualLocationResponse()),
-      contentType: "application/json",
-    }),
+  await page.route(
+    (url) => url.pathname === "/api/public-rentals",
+    (route) =>
+      route.fulfill({
+        body: JSON.stringify(createIndividualLocationResponse()),
+        contentType: "application/json",
+      }),
   );
   await page.route("**/api/analytics/announcement-interest", (route) =>
     route.fulfill({ status: 204 }),
@@ -260,10 +278,20 @@ async function mockIndividualLocationData(page: Page) {
   );
 }
 
+async function mockRecruitmentAlertSubscription(page: Page) {
+  await page.route("**/api/recruitment-alert-subscriptions", (route) =>
+    route.fulfill({
+      body: JSON.stringify({ accepted: true }),
+      contentType: "application/json",
+      status: 200,
+    }),
+  );
+}
+
 function createIndividualLocationResponse() {
   const location = createIndividualLocation();
   return {
-    generatedAt: "2026-07-29T00:00:00.000Z",
+    generatedAt: new Date().toISOString(),
     map: { clusters: [], locations: [location], mode: "locations", totalLocationCount: 1 },
     status: "verified",
   };

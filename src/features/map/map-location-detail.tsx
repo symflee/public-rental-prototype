@@ -10,7 +10,7 @@ import type { MapMarkerDetail } from "@/infrastructure/kakao/kakao-map-sdk";
 
 import { createLegalCategoryText, readCategoryLabel, readProviderLabel } from "./map-labels";
 import { readManualRecruitmentTiming, readMapRecruitmentState } from "./map-recruitment-status";
-import { RecruitmentInterestButton } from "./recruitment-interest-button";
+import { RecruitmentAlertSignup } from "./recruitment-alert-signup";
 
 type CategorySummary = Readonly<{
   areaText: string;
@@ -94,6 +94,10 @@ function LocationSummary(
         location={properties.location}
         recruitmentState={properties.recruitmentState}
       />
+      <RecruitmentAlertControl
+        locationId={properties.location.id}
+        recruitmentState={properties.recruitmentState}
+      />
       <BookmarkControl {...properties} />
     </>
   );
@@ -138,9 +142,7 @@ function BookmarkControl(
       >
         {readBookmarkButtonText(properties.bookmarked)}
       </button>
-      <p className="mt-2 text-xs text-slate-500">
-        이 브라우저에만 저장되며 모집 알림은 아직 제공하지 않습니다.
-      </p>
+      <p className="mt-2 text-xs text-slate-500">이 브라우저에서 다시 찾기 위한 저장입니다.</p>
       <BookmarkMessage message={properties.bookmarkMessage} />
     </div>
   );
@@ -158,6 +160,14 @@ function BookmarkMessage({ message }: Readonly<{ message?: string }>) {
 function readBookmarkButtonText(bookmarked: boolean) {
   if (bookmarked) return "저장 해제";
   return "이 주택 저장";
+}
+
+function RecruitmentAlertControl({
+  locationId,
+  recruitmentState,
+}: Readonly<{ locationId: string; recruitmentState: PublicRentalRecruitmentState }>) {
+  if (recruitmentState.status !== "NO_OPEN") return null;
+  return <RecruitmentAlertSignup locationId={locationId} />;
 }
 
 function LocationBadges({
@@ -281,7 +291,7 @@ function RecruitmentNoticeLinks({
   notices: readonly PublicRentalRecruitmentNotice[];
   recruitmentState: PublicRentalRecruitmentState;
 }>) {
-  if (notices.length === 0) return <RecruitmentInterestButton locationId={locationId} />;
+  if (notices.length === 0) return null;
   return (
     <>
       <div className="mt-4">
@@ -294,7 +304,6 @@ function RecruitmentNoticeLinks({
           ))}
         </ul>
       </div>
-      <ClosedNoticeInterestButton locationId={locationId} state={recruitmentState} />
     </>
   );
 }
@@ -307,14 +316,6 @@ function readNoticeSectionTitle(
   if (state.status === "UNKNOWN") return "연결된 모집공고";
   if (readManualRecruitmentTiming(location) === "UPCOMING") return "예정 모집공고";
   return "지난 모집공고";
-}
-
-function ClosedNoticeInterestButton({
-  locationId,
-  state,
-}: Readonly<{ locationId: string; state: PublicRentalRecruitmentState }>) {
-  if (state.status === "OPEN") return null;
-  return <RecruitmentInterestButton locationId={locationId} />;
 }
 
 function RecruitmentNoticeLink({

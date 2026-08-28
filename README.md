@@ -149,7 +149,7 @@ pnpm collect:public-rentals:api
 | `pnpm collect:public-rentals`          | CSV 스냅샷·CSV·캐시·보고서 생성        |
 | `pnpm collect:public-rentals:gyeonggi` | 경기도 API 스냅샷·모집공고·좌표 생성   |
 | `pnpm collect:public-rentals:api`      | API 검수 산출물을 별도 생성            |
-| `pnpm analytics:schema`                | Neon 분석 테이블·제약 준비             |
+| `pnpm analytics:schema`                | Neon 서비스 저장 테이블·제약 준비      |
 | `pnpm analytics:seed-history`          | 8월 11~14일 재구성 조회 기록 적재      |
 | `pnpm analytics:clear-history`         | 재구성 조회 기록만 제거                |
 | `pnpm lint`                            | ESLint 검사                            |
@@ -173,7 +173,7 @@ pnpm exec playwright install chromium
 - 전체 주택 정보 조회수
 - 현재 연결된 모집공고가 없는 주택 정보 조회수와 전체 조회 대비 비율
 - 실제 공고 열람 클릭 수
-- 미연결 단지의 공고 확인 의향 클릭 수
+- 기존 공고 확인 의향 클릭 수
 
 주택 상세 조회는 서버가 현재 스냅샷과 수기 연결 공고의 모집 기간을 확인한 뒤 조회 시각, 위치 ID,
 당시 모집 상태와 판정 출처를 별도 이벤트로 저장합니다. 같은 주택을 닫았다 다시 열거나 A→B→A로
@@ -189,7 +189,19 @@ DB에는 쿠키 원문이 아닌 서버 HMAC 해시만 저장하며 IP 주소, U
 재시도하고 서버는 실패 상태를 반환합니다.
 
 관심 주택 자체는 계정이나 서버가 아닌 해당 브라우저의 로컬 저장소에 최대 100곳까지 보관됩니다.
-브라우저 데이터를 삭제하면 함께 삭제되며 모집공고 알림은 아직 제공하지 않습니다.
+브라우저 데이터를 삭제하면 함께 삭제됩니다.
+
+현재 모집 중인 공고가 없는 주택에서는 다음 모집공고 1회 이메일 안내를 신청할 수 있습니다. 신청할
+때 이메일과 선택한 단지의 위치 ID·단지명을 명시적인 동의와 함께 Neon에 저장합니다. 운영자는
+미발송 신청을 DB에서 조회해 모집공고 시작을 확인한 뒤 직접 이메일을 보내고 발송 완료를 기록합니다.
+신청 정보는 발송 여부와 함께 신청일로부터 최대 1년간 보관하고 철회 처리 또는 보관 기간 종료 때
+삭제합니다. 자동 발송과 별도 관리자 화면은 제공하지 않습니다. 같은 이메일·단지의 미발송 중복
+신청은 한 행으로 유지합니다. 이 행은 이메일 입력과 동의까지 마친 신청 의향을 뜻하며 이메일 소유,
+실제 도달 또는 열람까지 검증하지는 않습니다.
+
+운영자는 [`database/recruitment-alert-queries.sql`](database/recruitment-alert-queries.sql)의 첫 쿼리로
+미발송 이메일·단지명·단지 ID를 확인합니다. 직접 안내한 뒤에는 같은 파일의 `$1`, `$2`를 각각 신청
+ID와 공고 ID로 바꿔 발송 완료를 기록합니다.
 
 Vercel Marketplace에서 Neon을 연결한 뒤 연결 문자열과 아래 서버 전용 환경 변수를 설정하고
 스키마를 한 번 준비합니다.
@@ -209,8 +221,10 @@ pnpm analytics:schema
 
 Vercel의 Sensitive 환경 변수는 로컬 CLI로 내려받을 수 없으므로, 로컬에 Neon 연결 문자열을
 두지 않는 경우에는 Neon SQL Editor에서
-[`database/analytics-schema.sql`](database/analytics-schema.sql)을 한 번 실행합니다. 이 파일은
-일별 서비스 지표, 개별 주택 조회 기록, 분석 실행 이력과 수기 모집공고 테이블을 모두 준비합니다.
+[`database/analytics-schema.sql`](database/analytics-schema.sql)과
+[`database/recruitment-alert-schema.sql`](database/recruitment-alert-schema.sql)을 한 번씩 실행합니다.
+두 파일은 일별 서비스 지표, 개별 주택 조회 기록, 분석 실행 이력, 수기 모집공고와 이메일 알림 신청
+테이블을 준비합니다.
 배포 환경에서 직접 준비할 때는 임시 `ANALYTICS_MIGRATION_TOKEN`을 설정한 배포에
 `POST /api/operations/analytics-history`를 Bearer 인증으로 한 번 호출합니다. 응답의
 `132/52/39.4`를 확인한 뒤 토큰을 제거하면 이 작업 API는 다시 사용할 수 없습니다.

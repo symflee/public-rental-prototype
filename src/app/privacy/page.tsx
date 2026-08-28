@@ -9,10 +9,11 @@ export default function PrivacyPage() {
     <main className="mx-auto max-w-2xl space-y-7 p-6 pb-16 md:p-10">
       <header>
         <h1 className="text-2xl font-bold text-slate-950">개인정보처리방침</h1>
-        <p className="mt-2 text-sm text-slate-600">시행일: 2026년 8월 14일</p>
+        <p className="mt-2 text-sm text-slate-600">시행일: 2026년 8월 28일</p>
       </header>
       <AnalyticsPolicy />
       <BookmarkPolicy />
+      <RecruitmentAlertPolicy />
       <RetentionPolicy />
       <ExternalServicePolicy />
     </main>
@@ -41,7 +42,18 @@ function BookmarkPolicy() {
   return (
     <PolicySection heading="관심 주택 저장">
       관심 주택은 현재 브라우저의 로컬 저장소에만 보관됩니다. 계정이나 다른 기기와 동기화되지 않으며
-      브라우저 데이터를 삭제하면 함께 삭제됩니다. 모집공고 알림은 아직 제공하지 않습니다.
+      브라우저 데이터를 삭제하면 함께 삭제됩니다.
+    </PolicySection>
+  );
+}
+
+function RecruitmentAlertPolicy() {
+  return (
+    <PolicySection heading="모집공고 이메일 알림">
+      현재 모집 중이 아닌 주택의 다음 모집공고 1회 안내를 신청하면 명시적인 동의를 받아 이메일
+      주소와 선택한 단지의 위치 ID·단지명을 수집합니다. 운영자가 모집공고 시작을 확인한 뒤 신청한
+      이메일로 직접 안내합니다. 동의하지 않아도 지도 탐색과 관심 주택 저장 기능은 이용할 수
+      있습니다.
     </PolicySection>
   );
 }
@@ -50,7 +62,9 @@ function RetentionPolicy() {
   return (
     <PolicySection heading="보관 기간">
       익명 브라우저별 실험 행동은 90일 후 삭제하고 일별 합산 카운터는 1년 후 삭제합니다. 쿠키를
-      삭제하거나 여러 브라우저와 기기를 사용하면 서로 다른 방문자로 집계될 수 있습니다.
+      삭제하거나 여러 브라우저와 기기를 사용하면 서로 다른 방문자로 집계될 수 있습니다. 이메일 알림
+      신청 정보는 발송 여부와 함께 신청일로부터 최대 1년간 보관하고 철회 처리 또는 보관 기간 종료 때
+      삭제합니다.
     </PolicySection>
   );
 }

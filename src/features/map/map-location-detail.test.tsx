@@ -29,10 +29,11 @@ test("모집 중인 단지에 공식 공고 상세 링크를 표시한다", () =
   expect(screen.getByText("현재 모집 중 공고")).toBeVisible();
 });
 
-test("공고가 없는 단지에는 확인 의향 버튼을 표시한다", () => {
+test("공고가 없는 단지에는 이메일 알림 신청 버튼을 표시한다", () => {
   render(<MapLocationDetail location={createDandaeHappyHousingLocation()} />);
 
-  expect(screen.getByRole("button", { name: "공고 확인해보기" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "공고 시작하면 메일 받기" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "공고 확인해보기" })).not.toBeInTheDocument();
 });
 
 test("공고가 없는 주택을 저장하고 해제할 수 있다", () => {
@@ -47,9 +48,7 @@ test("공고가 없는 주택을 저장하고 해제할 수 있다", () => {
   );
 
   expect(screen.getByText("현재 모집공고 없음")).toBeVisible();
-  expect(
-    screen.getByText("이 브라우저에만 저장되며 모집 알림은 아직 제공하지 않습니다."),
-  ).toBeVisible();
+  expect(screen.getByText("이 브라우저에서 다시 찾기 위한 저장입니다.")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "이 주택 저장" }));
   expect(onBookmarkToggle).toHaveBeenCalledWith(location.id);
   view.rerender(
@@ -77,6 +76,7 @@ test("모집 중인 주택은 모집 상태를 명확히 표시한다", () => {
 
   expect(screen.getByText("현재 모집 중")).toBeVisible();
   expect(screen.queryByRole("button", { name: "이 주택 저장" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "공고 시작하면 메일 받기" })).not.toBeInTheDocument();
 });
 
 test("종료된 수기 연결 공고는 기간과 출처를 과거 이력으로 표시한다", () => {
@@ -137,6 +137,7 @@ test("오래된 스냅샷의 공고 부재를 현재 공고 없음으로 단정�
 
   expect(screen.getByText("모집 상태 확인 필요")).toBeVisible();
   expect(screen.queryByText("현재 모집공고 없음")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "공고 시작하면 메일 받기" })).not.toBeInTheDocument();
 });
 
 test("DB에 저장된 모집 시각을 한국 시각으로 표시한다", () => {

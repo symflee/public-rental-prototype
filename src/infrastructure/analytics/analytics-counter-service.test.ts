@@ -14,6 +14,9 @@ const detailViews = vi.hoisted(() => ({
     openNoticeLocationDetailViewCount: 80,
   })),
 }));
+const recruitmentAlerts = vi.hoisted(() => ({
+  initialize: vi.fn(async () => undefined),
+}));
 
 vi.mock("./analytics-counter-repository", () => ({
   createAnalyticsCounterRepository: () => repository,
@@ -28,8 +31,11 @@ vi.mock("./location-detail-view-service", () => ({
 vi.mock("@/infrastructure/manual-recruitment", () => ({
   initializeManualRecruitmentStorage: vi.fn(async () => undefined),
 }));
+vi.mock("@/infrastructure/recruitment-alert", () => ({
+  initializeRecruitmentAlertStorage: recruitmentAlerts.initialize,
+}));
 
-import { readAnalyticsDashboard } from "./analytics-counter-service";
+import { initializeAnalyticsStorage, readAnalyticsDashboard } from "./analytics-counter-service";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -48,4 +54,10 @@ test("새 상세 조회 테이블 장애를 구형 카운터로 숨기지 않는
   await expect(readAnalyticsDashboard({ from: "2026-08-11", to: "2026-08-14" })).rejects.toThrow(
     "missing table",
   );
+});
+
+test("서비스 저장 스키마 초기화에 이메일 알림 신청을 포함한다", async () => {
+  await initializeAnalyticsStorage();
+
+  expect(recruitmentAlerts.initialize).toHaveBeenCalledOnce();
 });
