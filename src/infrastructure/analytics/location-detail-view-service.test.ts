@@ -6,6 +6,10 @@ const repository = vi.hoisted(() => ({
   isEnabled: vi.fn(() => true),
   isFrozenRun: vi.fn(async () => true),
   readBreakdown: vi.fn(async () => []),
+  readOperationalSummary: vi.fn(async () => ({
+    noOpenNoticeLocationDetailViewCount: 0,
+    openNoticeLocationDetailViewCount: 0,
+  })),
   readSummary: vi.fn(async () => ({
     noOpenNoticeLocationDetailViewCount: 0,
     openNoticeLocationDetailViewCount: 0,
@@ -19,6 +23,7 @@ vi.mock("./location-detail-view-repository", () => ({
 }));
 
 import {
+  readOperationalLocationDetailViewSummary,
   recordLocationDetailView,
   seedHistoricalLocationDetailViews,
 } from "./location-detail-view-service";
@@ -68,6 +73,14 @@ test("수기 연결 모집공고 식별자와 출처를 조회 시점에 고정�
   );
 });
 
+test("운영 조회 합계는 재구성 중복 제거 저장소를 사용한다", async () => {
+  const range = { from: "2026-08-11", to: "2026-08-14" };
+
+  await readOperationalLocationDetailViewSummary(range);
+
+  expect(repository.readOperationalSummary).toHaveBeenCalledWith(range);
+});
+
 test("재구성 시드 후 DB 합계 80건과 52건을 다시 확인한다", async () => {
   repository.readSummary.mockResolvedValueOnce({
     noOpenNoticeLocationDetailViewCount: 52,
@@ -81,4 +94,15 @@ test("재구성 시드 후 DB 합계 80건과 52건을 다시 확인한다", asy
     from: "2026-08-11",
     to: "2026-08-14",
   });
+  expect(repository.isFrozenRun).toHaveBeenCalledWith("historical-2026-08-11-14-v1");
+});
+
+test("재구성 실행이 동결되지 않으면 시드 성공으로 처리하지 않는다", async () => {
+  repository.isFrozenRun.mockResolvedValueOnce(false);
+  repository.readSummary.mockResolvedValueOnce({
+    noOpenNoticeLocationDetailViewCount: 52,
+    openNoticeLocationDetailViewCount: 80,
+  });
+
+  await expect(seedHistoricalLocationDetailViews()).rejects.toThrow("동결되지 않았습니다");
 });

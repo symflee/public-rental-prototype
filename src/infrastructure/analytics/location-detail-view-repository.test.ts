@@ -33,7 +33,32 @@ describe("location detail view repository", () => {
     });
   });
 
-  test("과거 실행 교체는 같은 이벤트를 갱신하고 남은 행만 원자적으로 지운다", async () => {
+  test("동결된 재구성 기간은 운영 조회를 대체해 중복 없이 합산한다", async () => {
+    const executor = createExecutor([{ no_open_total: "52", open_total: "80" }]);
+    const repository = createLocationDetailViewRepositoryWithExecutor(executor);
+
+    await expect(
+      repository.readOperationalSummary({ from: "2026-08-11", to: "2026-08-15" }),
+    ).resolves.toEqual({
+      noOpenNoticeLocationDetailViewCount: 52,
+      openNoticeLocationDetailViewCount: 80,
+    });
+
+    const statement = vi.mocked(executor.execute).mock.calls[0]?.[0] ?? "";
+    expect(statement).toContain("status = 'FROZEN'");
+    expect(statement).toContain("frozen_at IS NOT NULL");
+    expect(statement).toContain("NOT EXISTS");
+    expect(statement).toContain("period_starts_on");
+    expect(statement).toContain("period_ends_on");
+    expect(executor.execute).toHaveBeenCalledWith(statement, [
+      "live",
+      "historical-2026-08-11-14-v1",
+      "2026-08-11",
+      "2026-08-15",
+    ]);
+  });
+
+  test("과거 실행 교체는 이벤트 정리 후 실행 행을 한 번만 동결한다", async () => {
     const executor = createExecutor([]);
     const repository = createLocationDetailViewRepositoryWithExecutor(executor);
 
@@ -42,6 +67,9 @@ describe("location detail view repository", () => {
     const statement = vi.mocked(executor.execute).mock.calls[0]?.[0] ?? "";
     expect(statement).toContain("ON CONFLICT (event_id) DO UPDATE SET");
     expect(statement).toContain("event_id NOT IN (SELECT event_id FROM input_views)");
+    expect(statement).toContain("'RETROSPECTIVE_RECONSTRUCTION', 'FROZEN', now()");
+    expect(statement).not.toContain("'RETROSPECTIVE_RECONSTRUCTION', 'DRAFT'");
+    expect(statement.match(/INSERT INTO analytics_runs/gu)).toHaveLength(1);
     expect(executor.execute).toHaveBeenCalledWith(
       statement,
       expect.arrayContaining(["historical-2026-08-11-14-v1"]),

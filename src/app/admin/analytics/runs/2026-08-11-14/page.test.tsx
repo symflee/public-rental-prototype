@@ -22,6 +22,10 @@ vi.mock("@/infrastructure/analytics", async (importOriginal) => {
 test("재구성 실행의 출처와 주택별 조회를 표시한다", async () => {
   render(await HistoricalAnalyticsRunPage());
 
+  expect(screen.getByRole("link", { name: "서비스 이용 지표로 돌아가기" })).toHaveAttribute(
+    "href",
+    "/admin/analytics?from=2026-08-11&to=2026-08-14",
+  );
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("2026.08.11~08.14");
   expect(screen.getByText("재구성 데이터")).toBeVisible();
   expect(screen.getByRole("note")).toHaveTextContent("확인된 원자료는 전체 132건");

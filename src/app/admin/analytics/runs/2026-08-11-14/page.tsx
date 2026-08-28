@@ -39,7 +39,7 @@ function RunHeader() {
     <header className="space-y-3">
       <a
         className="text-sm font-semibold text-slate-700 underline"
-        href="/admin/analytics?dataset=history"
+        href="/admin/analytics?from=2026-08-11&to=2026-08-14"
       >
         서비스 이용 지표로 돌아가기
       </a>

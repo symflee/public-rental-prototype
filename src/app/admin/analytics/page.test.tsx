@@ -67,23 +67,23 @@ function expectDateInputs() {
 }
 
 function expectRangeQuery() {
-  expect(mocks.readAnalyticsDashboard).toHaveBeenCalledWith(
-    { from: "2026-08-01", to: "2026-08-07" },
-    "live",
-  );
+  expect(mocks.readAnalyticsDashboard).toHaveBeenCalledWith({
+    from: "2026-08-01",
+    to: "2026-08-07",
+  });
 }
 
-test("8월 재구성 데이터는 고정 기간과 별도 데이터셋으로 조회한다", async () => {
-  await renderAnalyticsPage({ dataset: "history", period: "7d" });
+test("과거 dataset 쿼리도 일반 날짜 필터와 서비스 이용 현황으로 통합한다", async () => {
+  await renderAnalyticsPage({ dataset: "history", from: "2026-08-11", to: "2026-08-14" });
 
-  expect(screen.getByText("합계 관측 · 시각/주택 재구성")).toBeVisible();
-  expect(screen.getByText("2026.08.11~08.14")).toBeVisible();
-  expect(screen.queryByLabelText("시작일")).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "서비스 이용 현황" })).not.toBeInTheDocument();
-  expect(mocks.readAnalyticsDashboard).toHaveBeenCalledWith(
-    { from: "2026-08-11", to: "2026-08-14" },
-    "historical-2026-08-11-14-v1",
-  );
+  expect(screen.getByLabelText("시작일")).toHaveValue("2026-08-11");
+  expect(screen.getByLabelText("종료일")).toHaveValue("2026-08-14");
+  expect(screen.getByRole("heading", { name: "서비스 이용 현황" })).toBeVisible();
+  expect(screen.queryByText("8월 11~14일 재구성")).not.toBeInTheDocument();
+  expect(mocks.readAnalyticsDashboard).toHaveBeenCalledWith({
+    from: "2026-08-11",
+    to: "2026-08-14",
+  });
 });
 
 test("상세 조회 원본 테이블 장애를 정상 지표로 위장하지 않는다", async () => {

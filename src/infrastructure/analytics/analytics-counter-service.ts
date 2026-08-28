@@ -7,14 +7,14 @@ import {
   subtractDays,
   type AnalyticsDateRange,
 } from "@/domain/announcement-analytics";
+import { initializeManualRecruitmentStorage } from "@/infrastructure/manual-recruitment";
 
 import { createAnalyticsCounterRepository } from "./analytics-counter-repository";
 import { initializeExperimentAnalyticsStorage } from "./experiment-event-service";
 import {
   initializeLocationDetailViewStorage,
-  readLocationDetailViewSummary,
+  readOperationalLocationDetailViewSummary,
 } from "./location-detail-view-service";
-import { initializeManualRecruitmentStorage } from "@/infrastructure/manual-recruitment";
 
 const repository = createAnalyticsCounterRepository();
 
@@ -30,9 +30,9 @@ export function recordAnnouncementInterest(locationId: string) {
   return repository.increment(createAnnouncementInterestCounter(readKoreanDate(), locationId));
 }
 
-export async function readAnalyticsDashboard(range: AnalyticsDateRange, datasetId = "live") {
+export async function readAnalyticsDashboard(range: AnalyticsDateRange) {
   const counters = await repository.read(range);
-  const summary = await readLocationDetailViewSummary(datasetId, range);
+  const summary = await readOperationalLocationDetailViewSummary(range);
   return createAnalyticsDashboard(counters, summary);
 }
 

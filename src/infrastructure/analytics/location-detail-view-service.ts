@@ -41,6 +41,10 @@ export function readLocationDetailViewSummary(datasetId: string, range: Analytic
   return repository.readSummary(datasetId, range);
 }
 
+export function readOperationalLocationDetailViewSummary(range: AnalyticsDateRange) {
+  return repository.readOperationalSummary(range);
+}
+
 export function readLocationDetailViewBreakdown(datasetId: string, range: AnalyticsDateRange) {
   return repository.readBreakdown(datasetId, range);
 }
@@ -57,6 +61,8 @@ export async function seedHistoricalLocationDetailViews() {
     to: HISTORICAL_ANALYTICS_RUN.periodEndsOn,
   });
   assertHistoricalSummary(summary);
+  const frozen = await repository.isFrozenRun(HISTORICAL_LOCATION_DETAIL_DATASET_ID);
+  assertHistoricalRunIsFrozen(frozen);
 }
 
 export function clearHistoricalLocationDetailViews() {
@@ -86,4 +92,9 @@ function assertHistoricalSummary(summary: {
     throw new Error("모집 중 조회 수가 다릅니다.");
   if (summary.noOpenNoticeLocationDetailViewCount === 52) return;
   throw new Error("비모집 조회 수가 다릅니다.");
+}
+
+function assertHistoricalRunIsFrozen(frozen: boolean) {
+  if (frozen) return;
+  throw new Error("재구성 실행이 동결되지 않았습니다.");
 }

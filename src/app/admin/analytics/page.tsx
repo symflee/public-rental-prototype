@@ -1,8 +1,6 @@
 import {
   createCurrentMonthDateRange,
   createRecentDateRange,
-  HISTORICAL_LOCATION_DETAIL_DATASET_ID,
-  LIVE_LOCATION_DETAIL_DATASET_ID,
   readAnalyticsDateRange,
   readKoreanDate,
   type AnalyticsDashboard,
@@ -14,10 +12,6 @@ import { publicRentalSnapshot } from "@/infrastructure/public-data/public-rental
 export const dynamic = "force-dynamic";
 
 type DateRange = Readonly<{ from: string; to: string }>;
-type AnalyticsDataset = Readonly<{
-  id: string;
-  queryValue: "history" | "live";
-}>;
 type SearchParameters = Readonly<{
   dataset?: string;
   from?: string;
@@ -27,7 +21,6 @@ type SearchParameters = Readonly<{
 type AnalyticsPageProperties = Readonly<{ searchParams: Promise<SearchParameters> }>;
 type AnalyticsDashboardPageProperties = Readonly<{
   dashboard: AnalyticsDashboard;
-  dataset: AnalyticsDataset;
   range: DateRange;
 }>;
 type DashboardMetric = Readonly<{ label: string; value: string }>;
@@ -41,35 +34,26 @@ type MetricGridProperties = Readonly<{
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProperties) {
   if (!isAnalyticsStorageEnabled()) return <AnalyticsUnavailable />;
   const parameters = await searchParams;
-  const dataset = readAnalyticsDataset(parameters.dataset);
-  const range = readDashboardDateRange(parameters, dataset);
-  const dashboard = await readDashboardSafely(range, dataset.id);
+  const range = readDashboardDateRange(parameters);
+  const dashboard = await readDashboardSafely(range);
   if (!dashboard) return <AnalyticsLoadFailed />;
-  return <AnalyticsDashboardPage dashboard={dashboard} dataset={dataset} range={range} />;
+  return <AnalyticsDashboardPage dashboard={dashboard} range={range} />;
 }
 
-async function readDashboardSafely(range: DateRange, datasetId: string) {
+async function readDashboardSafely(range: DateRange) {
   try {
-    return await readAnalyticsDashboard(range, datasetId);
+    return await readAnalyticsDashboard(range);
   } catch {
     return undefined;
   }
 }
 
-function readDashboardDateRange(parameters: SearchParameters, dataset: AnalyticsDataset) {
-  if (dataset.queryValue === "history") return { from: "2026-08-11", to: "2026-08-14" };
+function readDashboardDateRange(parameters: SearchParameters) {
   const today = readKoreanDate();
   if (parameters.period === "7d") return createRecentDateRange(today, 7);
   if (parameters.period === "30d") return createRecentDateRange(today, 30);
   if (parameters.period === "month") return createCurrentMonthDateRange(today);
   return readAnalyticsDateRange(parameters.from, parameters.to, today);
-}
-
-function readAnalyticsDataset(value: string | undefined): AnalyticsDataset {
-  if (value === "history") {
-    return { id: HISTORICAL_LOCATION_DETAIL_DATASET_ID, queryValue: "history" };
-  }
-  return { id: LIVE_LOCATION_DETAIL_DATASET_ID, queryValue: "live" };
 }
 
 function AnalyticsUnavailable() {
@@ -105,45 +89,32 @@ function AnalyticsDashboardPage(properties: AnalyticsDashboardPageProperties) {
 function AnalyticsDashboardContent(properties: AnalyticsDashboardPageProperties) {
   return (
     <div className="mx-auto max-w-6xl space-y-10 px-6 pb-20 md:px-10">
-      <DashboardHeader dataset={properties.dataset} range={properties.range} />
+      <DashboardHeader range={properties.range} />
       <HousingInformationSection dashboard={properties.dashboard} />
-      <LiveServiceUsageSection dashboard={properties.dashboard} dataset={properties.dataset} />
+      <ServiceUsageSection dashboard={properties.dashboard} />
     </div>
   );
 }
 
-function DashboardHeader({
-  dataset,
-  range,
-}: Readonly<{
-  dataset: AnalyticsDataset;
-  range: DateRange;
-}>) {
+function DashboardHeader({ range }: Readonly<{ range: DateRange }>) {
   return (
     <header>
       <h1 className="text-3xl font-bold tracking-tight text-slate-950">서비스 이용 지표</h1>
-      <AnalyticsDatasetLinks dataset={dataset} />
-      <DashboardRangeControls dataset={dataset} range={range} />
+      <DashboardLinks />
+      <AnalyticsRangeFilters range={range} />
     </header>
   );
 }
 
-function AnalyticsDatasetLinks({ dataset }: Readonly<{ dataset: AnalyticsDataset }>) {
+function DashboardLinks() {
   return (
-    <nav aria-label="분석 데이터" className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+    <nav aria-label="관리 도구" className="mt-4 flex flex-wrap items-center gap-4 text-sm">
       <a
-        className={createDatasetLinkClass(dataset.queryValue === "live")}
-        href="/admin/analytics?period=7d"
+        className="font-semibold text-slate-700 underline"
+        href="/admin/analytics/runs/2026-08-11-14"
       >
-        운영 데이터
+        주택별 조회 내역
       </a>
-      <a
-        className={createDatasetLinkClass(dataset.queryValue === "history")}
-        href="/admin/analytics?dataset=history"
-      >
-        8월 11~14일 재구성
-      </a>
-      <HistoricalDatasetBadge dataset={dataset} />
       <a className="font-semibold text-slate-700 underline" href="/admin/recruitment-notices">
         수기 공고 관리
       </a>
@@ -151,71 +122,23 @@ function AnalyticsDatasetLinks({ dataset }: Readonly<{ dataset: AnalyticsDataset
   );
 }
 
-function createDatasetLinkClass(selected: boolean) {
-  if (selected) return "rounded-md bg-slate-900 px-3 py-1.5 font-semibold text-white";
-  return "rounded-md border border-slate-300 px-3 py-1.5 font-semibold text-slate-700";
-}
-
-function HistoricalDatasetBadge({ dataset }: Readonly<{ dataset: AnalyticsDataset }>) {
-  if (dataset.queryValue !== "history") return null;
+function AnalyticsRangeFilters({ range }: Readonly<{ range: DateRange }>) {
   return (
     <>
-      <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-900">
-        합계 관측 · 시각/주택 재구성
-      </span>
-      <a
-        className="font-semibold text-slate-700 underline"
-        href="/admin/analytics/runs/2026-08-11-14"
-      >
-        주택별 내역
-      </a>
+      <AnalyticsRangePresets />
+      <AnalyticsRangeForm range={range} />
     </>
   );
 }
 
-function DashboardRangeControls({
-  dataset,
-  range,
-}: Readonly<{
-  dataset: AnalyticsDataset;
-  range: DateRange;
-}>) {
-  if (dataset.queryValue === "history") {
-    return (
-      <time className="mt-4 block text-sm font-semibold text-slate-600">2026.08.11~08.14</time>
-    );
-  }
-  return <AnalyticsRangeFilters dataset={dataset} range={range} />;
-}
-
-function AnalyticsRangeFilters({
-  dataset,
-  range,
-}: Readonly<{
-  dataset: AnalyticsDataset;
-  range: DateRange;
-}>) {
-  return (
-    <>
-      <AnalyticsRangePresets dataset={dataset} />
-      <AnalyticsRangeForm dataset={dataset} range={range} />
-    </>
-  );
-}
-
-function AnalyticsRangePresets({ dataset }: Readonly<{ dataset: AnalyticsDataset }>) {
+function AnalyticsRangePresets() {
   return (
     <nav aria-label="분석 기간" className="mt-4 flex flex-wrap gap-2 text-sm">
-      <AnalyticsRangePreset href={createPresetHref("7d", dataset)} label="최근 7일" />
-      <AnalyticsRangePreset href={createPresetHref("30d", dataset)} label="최근 30일" />
-      <AnalyticsRangePreset href={createPresetHref("month", dataset)} label="이번 달" />
+      <AnalyticsRangePreset href="/admin/analytics?period=7d" label="최근 7일" />
+      <AnalyticsRangePreset href="/admin/analytics?period=30d" label="최근 30일" />
+      <AnalyticsRangePreset href="/admin/analytics?period=month" label="이번 달" />
     </nav>
   );
-}
-
-function createPresetHref(period: string, dataset: AnalyticsDataset) {
-  if (dataset.queryValue === "live") return `/admin/analytics?period=${period}`;
-  return `/admin/analytics?dataset=history&period=${period}`;
 }
 
 function AnalyticsRangePreset(properties: RangePresetProperties) {
@@ -229,26 +152,14 @@ function AnalyticsRangePreset(properties: RangePresetProperties) {
   );
 }
 
-function AnalyticsRangeForm({
-  dataset,
-  range,
-}: Readonly<{
-  dataset: AnalyticsDataset;
-  range: DateRange;
-}>) {
+function AnalyticsRangeForm({ range }: Readonly<{ range: DateRange }>) {
   return (
     <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-      <DatasetInput dataset={dataset} />
       <DateInput label="시작일" name="from" value={range.from} />
       <DateInput label="종료일" name="to" value={range.to} />
       <RangeSubmitButton />
     </form>
   );
-}
-
-function DatasetInput({ dataset }: Readonly<{ dataset: AnalyticsDataset }>) {
-  if (dataset.queryValue === "live") return null;
-  return <input name="dataset" type="hidden" value="history" />;
 }
 
 function RangeSubmitButton() {
@@ -310,14 +221,6 @@ function ServiceUsageSection({ dashboard }: Readonly<{ dashboard: AnalyticsDashb
       <AnalyticsRankings dashboard={dashboard} />
     </section>
   );
-}
-
-function LiveServiceUsageSection({
-  dashboard,
-  dataset,
-}: Readonly<{ dashboard: AnalyticsDashboard; dataset: AnalyticsDataset }>) {
-  if (dataset.queryValue !== "live") return null;
-  return <ServiceUsageSection dashboard={dashboard} />;
 }
 
 function createServiceUsageMetrics(dashboard: AnalyticsDashboard) {

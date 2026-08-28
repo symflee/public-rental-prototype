@@ -2,6 +2,8 @@ import { neon } from "@neondatabase/serverless";
 
 import {
   createLocationDetailViewSummary,
+  HISTORICAL_LOCATION_DETAIL_DATASET_ID,
+  LIVE_LOCATION_DETAIL_DATASET_ID,
   type AnalyticsDateRange,
   type LocationDetailViewEvent,
   type LocationDetailViewSummary,
@@ -40,6 +42,7 @@ export type LocationDetailViewRepository = Readonly<{
     datasetId: string,
     range: AnalyticsDateRange,
   ) => Promise<readonly LocationDetailBreakdown[]>;
+  readOperationalSummary: (range: AnalyticsDateRange) => Promise<LocationDetailViewSummary>;
   readSummary: (datasetId: string, range: AnalyticsDateRange) => Promise<LocationDetailViewSummary>;
   record: (event: LocationDetailViewEvent) => Promise<void>;
   replaceHistoricalRun: (
@@ -61,6 +64,39 @@ const READ_SUMMARY = `
     COUNT(*) FILTER (WHERE notice_state = 'NO_OPEN') AS no_open_total
   FROM analytics_location_detail_views
   WHERE dataset_id = $1 AND metric_date >= $2::date AND metric_date <= $3::date
+`;
+const READ_OPERATIONAL_SUMMARY = `
+  WITH published_run AS (
+    SELECT dataset_id, period_starts_on, period_ends_on
+    FROM analytics_runs
+    WHERE dataset_id = $2
+      AND origin = 'RETROSPECTIVE_RECONSTRUCTION'
+      AND status = 'FROZEN'
+      AND frozen_at IS NOT NULL
+  ), operational_views AS (
+    SELECT live_view.notice_state
+    FROM analytics_location_detail_views live_view
+    WHERE live_view.dataset_id = $1
+      AND live_view.origin = 'LIVE'
+      AND live_view.metric_date >= $3::date
+      AND live_view.metric_date <= $4::date
+      AND NOT EXISTS (
+        SELECT 1 FROM published_run
+        WHERE live_view.metric_date BETWEEN period_starts_on AND period_ends_on
+      )
+    UNION ALL
+    SELECT historical_view.notice_state
+    FROM analytics_location_detail_views historical_view
+    JOIN published_run ON historical_view.dataset_id = published_run.dataset_id
+      AND historical_view.metric_date BETWEEN period_starts_on AND period_ends_on
+    WHERE historical_view.origin = 'RETROSPECTIVE_RECONSTRUCTION'
+      AND historical_view.metric_date >= $3::date
+      AND historical_view.metric_date <= $4::date
+  )
+  SELECT
+    COUNT(*) FILTER (WHERE notice_state = 'OPEN') AS open_total,
+    COUNT(*) FILTER (WHERE notice_state = 'NO_OPEN') AS no_open_total
+  FROM operational_views
 `;
 const READ_BREAKDOWN = `
   SELECT location_id,
@@ -88,21 +124,7 @@ const CLEAR_RUN = `
   DELETE FROM analytics_runs WHERE dataset_id = $1
 `;
 const REPLACE_RUN = `
-  WITH saved_run AS (
-    INSERT INTO analytics_runs (
-      dataset_id, label, period_starts_on, period_ends_on, reference_time, origin, status
-    ) VALUES ($1, $2, $3::date, $4::date, $5::timestamptz,
-      'RETROSPECTIVE_RECONSTRUCTION', 'DRAFT')
-    ON CONFLICT (dataset_id) DO UPDATE SET
-      label = EXCLUDED.label,
-      period_starts_on = EXCLUDED.period_starts_on,
-      period_ends_on = EXCLUDED.period_ends_on,
-      reference_time = EXCLUDED.reference_time,
-      origin = EXCLUDED.origin,
-      status = 'DRAFT',
-      frozen_at = NULL
-    RETURNING dataset_id
-  ), input_views AS (
+  WITH input_views AS (
     SELECT * FROM jsonb_to_recordset($6::jsonb) AS input_view(
       event_id uuid,
       metric_date date,
@@ -120,7 +142,7 @@ const REPLACE_RUN = `
     SELECT event_id, $1, metric_date, viewed_at, location_id,
       notice_state, matched_notice_id, status_source, 'RETROSPECTIVE_RECONSTRUCTION'
     FROM input_views
-    CROSS JOIN saved_run
+    WHERE true
     ON CONFLICT (event_id) DO UPDATE SET
       dataset_id = EXCLUDED.dataset_id,
       metric_date = EXCLUDED.metric_date,
@@ -136,10 +158,28 @@ const REPLACE_RUN = `
     WHERE dataset_id = $1
       AND event_id NOT IN (SELECT event_id FROM input_views)
     RETURNING event_id
+  ), completed_views AS (
+    SELECT
+      (SELECT COUNT(*) FROM saved_views) AS saved_count,
+      (SELECT COUNT(*) FROM deleted_stale_views) AS deleted_count
   )
-  UPDATE analytics_runs SET status = 'FROZEN', frozen_at = now()
-  WHERE dataset_id = $1
-    AND (SELECT COUNT(*) FROM saved_views) = jsonb_array_length($6::jsonb)
+  INSERT INTO analytics_runs (
+    dataset_id, label, period_starts_on, period_ends_on, reference_time,
+    origin, status, frozen_at
+  )
+  SELECT $1, $2, $3::date, $4::date, $5::timestamptz,
+    'RETROSPECTIVE_RECONSTRUCTION', 'FROZEN', now()
+  FROM completed_views
+  WHERE saved_count = jsonb_array_length($6::jsonb) AND deleted_count >= 0
+  ON CONFLICT (dataset_id) DO UPDATE SET
+    label = EXCLUDED.label,
+    period_starts_on = EXCLUDED.period_starts_on,
+    period_ends_on = EXCLUDED.period_ends_on,
+    reference_time = EXCLUDED.reference_time,
+    origin = EXCLUDED.origin,
+    status = EXCLUDED.status,
+    frozen_at = EXCLUDED.frozen_at
+  RETURNING dataset_id
 `;
 
 export function createLocationDetailViewRepository(
@@ -158,6 +198,7 @@ export function createLocationDetailViewRepositoryWithExecutor(
     isEnabled: () => true,
     isFrozenRun: (datasetId) => isFrozenRun(executor, datasetId),
     readBreakdown: (datasetId, range) => readBreakdown(executor, datasetId, range),
+    readOperationalSummary: (range) => readOperationalSummary(executor, range),
     readSummary: (datasetId, range) => readSummary(executor, datasetId, range),
     record: (event) => record(executor, event),
     replaceHistoricalRun: (run, events) => replaceHistoricalRun(executor, run, events),
@@ -176,6 +217,7 @@ function createDisabledRepository(): LocationDetailViewRepository {
     isEnabled: () => false,
     isFrozenRun: async () => false,
     readBreakdown: async () => [],
+    readOperationalSummary: async () => createLocationDetailViewSummary(0, 0),
     readSummary: async () => createLocationDetailViewSummary(0, 0),
     record: rejectConfiguration,
     replaceHistoricalRun: rejectConfiguration,
@@ -215,7 +257,28 @@ async function readSummary(
   range: AnalyticsDateRange,
 ) {
   const rows = await executor.execute(READ_SUMMARY, [datasetId, range.from, range.to]);
-  const row = rows.at(0);
+  return readSummaryRow(rows.at(0));
+}
+
+async function readOperationalSummary(
+  executor: LocationDetailViewSqlExecutor,
+  range: AnalyticsDateRange,
+) {
+  const parameters = createOperationalSummaryParameters(range);
+  const rows = await executor.execute(READ_OPERATIONAL_SUMMARY, parameters);
+  return readSummaryRow(rows.at(0));
+}
+
+function createOperationalSummaryParameters(range: AnalyticsDateRange) {
+  return [
+    LIVE_LOCATION_DETAIL_DATASET_ID,
+    HISTORICAL_LOCATION_DETAIL_DATASET_ID,
+    range.from,
+    range.to,
+  ];
+}
+
+function readSummaryRow(row: unknown) {
   if (!isRecord(row)) return createLocationDetailViewSummary(0, 0);
   return createLocationDetailViewSummary(readCount(row.open_total), readCount(row.no_open_total));
 }
